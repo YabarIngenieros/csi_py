@@ -296,6 +296,11 @@ class CSIHandler:
         self.model.DatabaseTables.SetLoadCombinationsSelectedForDisplay(cases_and_combos)
 
     # Métodos delegados al extractor para mantener compatibilidad
+    def get_point_list(self):
+        """Obtiene lista de todos los puntos"""
+        return self.extractor.get_point_list()
+
+    
     def get_table(self, table_name, set_envelopes=True):
         """Delegado al extractor"""
         return self.extractor.get_table(table_name, set_envelopes)
@@ -307,7 +312,7 @@ if __name__ == '__main__':
     etabs_model = CSIHandler('Etabs')
     etabs_model.connect_open_instance()
     to = time.time()
-    print(etabs_model.get_table('Element Forces - Beams'))
+    print(etabs_model.get_point_list())
     #print(etabs_model.extract_frame_info(format='excel'))
     print(time.time()-to)
     

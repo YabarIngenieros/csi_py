@@ -56,6 +56,13 @@ eFramePropType = {
     47: 'PCCGirderBox'
 }
 
+eMatSymType = {
+    0: 'Isotropic',
+    1: 'Orthotropic',
+    2: 'Anisotropic',
+    3: 'Uniaxial'
+}
+
 def validate_programs(program):
     # Validar y estandarizar el programa
     program = program.upper().strip()
@@ -137,8 +144,21 @@ class CSIHandler:
         module = getattr(comtypes.gen, f'{program}v1')
         self.helper = helper.QueryInterface(module.cHelper)
         
+        self.initialize_properties()
+        
         # Inicializar extractor
         self._extractor = None
+        
+    def initialize_properties(self):
+        self._cases = None
+        self._combos = None
+        self._cases_and_combos = None
+        self._design_cases = None
+        self._design_cases_and_combos = None
+        self._seismic_cases = None
+        self._seismic_combos = None
+        self._seismic_cases_and_combos = None
+        self._stories = None
         
     @property
     def extractor(self):
@@ -231,23 +251,32 @@ class CSIHandler:
         Combo=2
         SapModel.DataBaseTables.SetOutputOptionsForDisplay(IsUserBaseReactionLocation,UserBaseReactionX,UserBaseReactionY,UserBaseReactionZ,IsAllModes,StartMode,EndMode,IsAllBucklingModes,StartBucklingMode,EndBucklingMode,MultistepStatic,NonlinearStatic,ModalHistory,DirectHistory,Combo)
         
-    def get_available_tables(self):
+    @property
+    def available_tables(self):
         data = self.model.DatabaseTables.GetAvailableTables()
         return dict(zip(data[1],data[3]))
         
+    @property
+    def cases(self):
+        if self._cases is None:
+            load_cases = self.model.LoadCases.GetNameList()[1]
+            load_cases = [i for i in load_cases if i[0] != '~']
+            self._cases =  list(load_cases)
+        return self._cases
     
-    def get_cases(self):
-        load_cases = self.model.LoadCases.GetNameList()[1]
-        load_cases = [i for i in load_cases if i[0] != '~']
-        return list(load_cases)
+    @property
+    def combos(self):
+        if self._combos is None:
+            load_combos = self.model.RespCombo.GetNameList()[1]
+            load_combos = [i for i in load_combos if i[0] != '~']
+            self._combos = list(load_combos)
+        return self._combos
     
-    def get_combos(self):
-        load_combos = self.model.RespCombo.GetNameList()[1]
-        load_combos = [i for i in load_combos if i[0] != '~']
-        return list(load_combos)
-    
-    def get_cases_and_combos(self):
-        return self.get_cases()+self.get_combos()
+    @property
+    def cases_and_combos(self):
+        if self._cases_and_combos is None:
+            self._cases_and_combos = self.cases+self.combos
+        return self._cases_and_combos
         
     def get_combo_cases(self, combo_name):
         # Obtener la información inicial de la combinación
@@ -265,54 +294,342 @@ class CSIHandler:
                 
         return list(set(unique_cases))
     
-    def get_seismic_cases(self):
-        load_cases = self.get_cases()
+    @property
+    def design_cases(self):
+        if self._design_cases is None:
+            self._design_cases = [case for case in self.cases if
+                self.model.LoadCases.GetTypeOAPI_1(case)[2] != 8]
+        return self._design_cases
+    
+    @property
+    def design_cases_and_combos(self):
+        if self._design_cases_and_combos is None:
+            self._design_cases_and_combos = self.design_cases+self.combos
+            
+        return self._design_cases_and_combos
+    
+    @property
+    def seismic_cases(self):
+        load_cases = self.cases
         seismic_cases = [case for case in load_cases if
          self.model.LoadCases.GetTypeOAPI_1(case)[2]==5]
         return seismic_cases
     
-    def get_seismic_combos(self):
-        load_combos = self.get_combos()
-        seismic_cases = self.get_seismic_cases()
+    @property
+    def seismic_combos(self):
+        load_combos = self.combos
+        seismic_cases = self.seismic_cases
         seismic_combos = [cb for cb in load_combos if
          set(self.get_combo_cases(cb)).\
              intersection(seismic_cases)]
         return seismic_combos
     
-    def get_seismic_cases_and_combos(self):
-        seismic_cases = self.get_seismic_cases()
-        seismic_combos = self.get_seismic_combos()
-        return seismic_cases + seismic_combos
-    
-    def get_stories(self):
-        return self.model.Story.GeStories()[1]
-    
     @property
-    def story_order(self):
-        return self.get_stories()
+    def seismic_cases_and_combos(self):
+        return self.seismic_cases + self.seismic_combos
+
+    @property
+    def stories(self):
+        return self.model.Story.GeStories()[1]
     
     def select_cases_and_combos(self,cases_and_combos):
         self.model.DatabaseTables.SetLoadCasesSelectedForDisplay(cases_and_combos)
         self.model.DatabaseTables.SetLoadCombinationsSelectedForDisplay(cases_and_combos)
 
-    # Métodos delegados al extractor para mantener compatibilidad
-    def get_point_list(self):
-        """Obtiene lista de todos los puntos"""
-        return self.extractor.get_point_list()
-
+    # Métodos delegados al extractor
     
     def get_table(self, table_name, set_envelopes=True):
-        """Delegado al extractor"""
+        """Extrae una tabla del modelo, la devuelve en dataFrame"""
         return self.extractor.get_table(table_name, set_envelopes)
-
+    
+    # ==================== MÉTODOS DELEGADOS - MATERIALS ====================
+    @property
+    def material_list(self):
+        """Obtiene lista de todos los materiales"""
+        return self.extractor.material_list
+    
+    def get_material_properties(self, material_name):
+        """
+        Obtiene propiedades de un material.
         
+        Parameters:
+            material_name (str): Nombre del material
+            
+        Returns:
+            dict: Propiedades del material
+        """
+        return self.extractor.get_material_properties(material_name)
+    
+    @property
+    def material_properties(self):
+        return self.extractor.material_properties
+    
+
+    # ==================== MÉTODOS DELEGADOS - POINTS ====================
+    @property
+    def point_list(self):
+        """Obtiene lista de todos los puntos"""
+        return self.extractor.point_list
+    
+    def get_point_coordinates(self, point_name):
+        """
+        Obtiene coordenadas de un punto.
+        
+        Parameters:
+            point_name (str): Nombre del punto
+            
+        Returns:
+            dict: Coordenadas {'X', 'Y', 'Z'}
+        """
+        return self.extractor.get_point_coordinates(point_name)
+    
+    @property
+    def point_coordinates(self):
+        """Dataframe de coordenadas"""
+        return self.extractor.points_coordinates
+    
+    def get_point_restraints(self, point_name):
+        """
+        Obtiene restricciones de un punto.
+        
+        Parameters:
+            point_name (str): Nombre del punto
+            
+        Returns:
+            dict: Restricciones {'UX', 'UY', 'UZ', 'RX', 'RY', 'RZ'}
+        """
+        return self.extractor.get_point_restraints(point_name)
+    
+    @property
+    def points_restraints(self):
+        return self.extractor.points_restraints
+    
+    def extract_point_reactions(self, point_name=None, cases_and_combos=None):
+        """
+        Extrae reacciones en puntos.
+        
+        Parameters:
+            point_name (str, optional): Nombre del punto. Si None, extrae todos.
+            cases_and_combos (list, optional): Casos/combos. Si None, usa todos.
+            
+        Returns:
+            DataFrame: Reacciones F1, F2, F3, M1, M2, M3
+        """
+        return self.extractor.extract_point_reactions(point_name, cases_and_combos)
+    
+    @property
+    def points_reactions(self):
+        return self.extractor.points_reactions
+        
+    # ==================== MÉTODOS DELEGADOS - FRAMES ====================
+    
+    @property
+    def frame_sections_list(self):
+        return self.extractor.frame_sections_list
+    
+    def get_frame_section_properties(self, section_name):
+        """
+        Obtiene propiedades de una sección.
+        
+        Parameters:
+            section_name (str): Nombre de la sección
+            
+        Returns:
+            dict: Propiedades de la sección
+        """
+        return self.extractor.get_frame_section_properties(section_name)
+    
+    def get_frame_section_dimensions(self, get_properties=False):
+        """
+        Obtiene dimensiones de las secciones.
+        
+        Parameters:
+            get_properties (bool): Si True, incluye propiedades geométricas
+            
+        Returns:
+            DataFrame: Dimensiones de secciones
+        """
+        return self.extractor.get_frame_section_dimensions(get_properties)
+    
+    @property
+    def frame_sections_data(self):
+        return self.extractor.frame_sections_data
+    
+    @property
+    def frame_list(self):
+        """Obtiene lista de todos los frames"""
+        return self.extractor.frame_list
+
+    def get_frame_section(self, frame_name):
+        """
+        Obtiene sección asignada a un frame.
+        
+        Parameters:
+            frame_name (str): Nombre del frame
+            
+        Returns:
+            str: Nombre de la sección
+        """
+        return self.extractor.get_frame_section(frame_name)
+    
+    def get_frame_points(self, frame_name):
+        """
+        Obtiene puntos inicial y final de un frame.
+        
+        Parameters:
+            frame_name (str): Nombre del frame
+            
+        Returns:
+            dict: {'point_i', 'point_j'}
+        """
+        return self.extractor.get_frame_points(frame_name)
+    
+    def get_frame_coordinates(self, frame_name):
+        """
+        Obtiene coordenadas de puntos inicial y final.
+        
+        Parameters:
+            frame_name (str): Nombre del frame
+            
+        Returns:
+            dict: {'coord_i', 'coord_j'}
+        """
+        return self.extractor.get_frame_coordinates(frame_name)
+    
+    def get_frame_length(self, frame_name):
+        """
+        Obtiene longitud del frame.
+        
+        Parameters:
+            frame_name (str): Nombre del frame
+            
+        Returns:
+            float: Longitud del frame
+        """
+        return self.extractor.get_frame_length(frame_name)
+    
+    @property
+    def frames_properties(self):
+        return self.extractor.frames_properties
+    
+    def extract_frame_forces(self, frame_name=None, cases_and_combos=None):
+        """
+        Extrae fuerzas en frames.
+        
+        Parameters:
+            frame_name (str, optional): Nombre del frame. Si None, extrae todos.
+            cases_and_combos (list, optional): Casos/combos. Si None, usa todos.
+            
+        Returns:
+            DataFrame: Fuerzas P, V2, V3, T, M2, M3
+        """
+        return self.extractor.extract_frame_forces(frame_name, cases_and_combos)
+    
+    @property
+    def frames_forces(self):
+        return self.extractor.frames_forces
+    
+        
+    # ==================== MÉTODOS DELEGADOS - AREAS ====================
+    @property
+    def area_sections_list(self):
+        return self.extractor.area_sections_list
+    
+    def get_area_section(self, area_name):
+        """
+        Obtiene sección asignada a un área.
+        
+        Parameters:
+            area_name (str): Nombre del área
+            
+        Returns:
+            str: Nombre de la sección
+        """
+        return self.extractor.get_area_section(area_name)
+    
+    def get_area_points(self, area_name):
+        """
+        Obtiene puntos que definen un área.
+        
+        Parameters:
+            area_name (str): Nombre del área
+            
+        Returns:
+            list: Lista de nombres de puntos
+        """
+        return self.extractor.get_area_points(area_name)
+    
+    @property
+    def area_geometry(self):
+        """Obtiene lista de todos los objetos de área"""
+        return self.extractor.area_geometry
+    
+    def map_area_properties(self):
+        self.extractor.map_area_properties()
+    
+    @property
+    def area_list(self):
+        return self.extractor.area_list
+    
+    def extract_area_forces(self,area_name,cases_and_combos):
+        return self.extractor.extract_area_forces(area_name,cases_and_combos)
+    
+    @property
+    def area_forces(self):
+        return self.extractor.area_forces   
+    
+    
+    # ==================== MÉTODOS DELEGADOS - SLABS ====================
+    @property
+    def slab_sections_data(self):
+        return self.extractor.slab_sections_data
+    
+    @property
+    def deck_sections_data(self):
+        return self.extractor.deck_sections_data
+    
+    @property
+    def floor_list(self):
+        return self.extractor.floor_list
+    
+    
+    @property
+    def slab_properties(self):
+        return self.extractor.slab_properties
+    
+    def extract_area_forces(self, area_name=None, cases_and_combos=None):
+        """
+        Extrae fuerzas en áreas.
+        
+        Parameters:
+            area_name (str, optional): Nombre del área. Si None, extrae todas.
+            cases_and_combos (list, optional): Casos/combos. Si None, usa todos.
+            
+        Returns:
+            DataFrame: Fuerzas F11, F22, F12, M11, M22, M12, V13, V23
+        """
+        return self.extractor.extract_area_forces(area_name, cases_and_combos)
+
+    # ==================== MÉTODOS DELEGADOS - WALLS ====================
+    @property
+    def wall_sections_data(self):
+        return self.extractor.wall_sections_data
+    
+    @property
+    def wall_list(self):
+        return self.extractor.wall_list
+        
+
+    
 
 if __name__ == '__main__':
     import time
     etabs_model = CSIHandler('Etabs')
     etabs_model.connect_open_instance()
-    to = time.time()
-    print(etabs_model.get_point_list())
-    #print(etabs_model.extract_frame_info(format='excel'))
-    print(time.time()-to)
-    
+    print(etabs_model.slab_sections_data)
+    # to = time.time()
+    # print(etabs_model.area_properties)
+    # print(time.time()-to)
+    # to = time.time()
+    # print(etabs_model.area_properties)
+    # print(time.time()-to)

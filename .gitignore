@@ -3,6 +3,9 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+# BBDD no deseadas
+*.json
+
 # C extensions
 *.so
 

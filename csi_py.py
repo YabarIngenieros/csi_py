@@ -626,7 +626,6 @@ if __name__ == '__main__':
     import time
     etabs_model = CSIHandler('Etabs')
     etabs_model.connect_open_instance()
-    print(etabs_model.slab_sections_data)
     # to = time.time()
     # print(etabs_model.area_properties)
     # print(time.time()-to)

@@ -1,4 +1,4 @@
-from constants import eUnits
+from constants import eUnits,u
 from extractor import DataExtractor
 from builder import ModelBuilder
 
@@ -62,7 +62,7 @@ def get_paths(program='ETABS'):
 
 class CSIHandler(DataExtractor,
                  ModelBuilder):
-    def __init__(self,program='ETABS',units='kN_m_C'):
+    def __init__(self,program='ETABS',units=u.csi_units):
         program = validate_programs(program)
         self.program = program
         self.model = None
@@ -70,10 +70,11 @@ class CSIHandler(DataExtractor,
         self.file_path = None
         self.file_name = None
         self.units = units
-    
+
         helper = comtypes.client.CreateObject(f'{program}v1.Helper')
         module = getattr(comtypes.gen, f'{program}v1')
         self.helper = helper.QueryInterface(module.cHelper)
+        super().__init__()
         
     def connect_open_instance(self,instance_position=None):
         program = self.program
@@ -136,4 +137,15 @@ class CSIHandler(DataExtractor,
         '''
         self.model.SetPresentUnits(eUnits[self.units])
         
-    
+        
+        
+if __name__ == '__main__':
+    import time
+    etabs_model = CSIHandler('Etabs')
+    etabs_model.connect_open_instance()
+    to = time.time()
+    print(etabs_model.add_rectangle_section('S1','C f\'c = 21 MPa',0.5,0.3))
+    print(time.time()-to)
+    # to = time.time()
+    # print(etabs_model.area_properties)
+    # print(time.time()-to)

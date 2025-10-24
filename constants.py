@@ -1,5 +1,9 @@
 from enum import IntEnum
-    
+
+from unit_tool import Units
+#u = Units(system='MKS')
+u = Units()
+
 class EtabsError(Exception):
     """Error general de ETABS."""
     pass
@@ -71,3 +75,12 @@ class eFramePropType(IntEnum):
     Trapezoidal = 46
     PCCGirderBox = 47
     
+class eMatType(IntEnum):
+    Steel = 1
+    Concrete = 2
+    NoDesign = 3
+    Aluminum = 4
+    ColdFormed = 5
+    Rebar = 6
+    Tendon = 7
+    Masonry = 8

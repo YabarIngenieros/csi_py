@@ -1,8 +1,17 @@
+from constants import eMatType,u
+
 class ModelBuilder:
-    '''Mixin de modelamiento con API de ETABS'''   
+    '''Mixin de modelamiento con API de ETABS'''  
+    def __init__(self):
+        super().__init__()
+     
     # ==================== MATERIALS ====================
     
-    def add_material(self, material_name, material_type, E, U, A, weight_per_volume):
+    def add_material(self, 
+                     material_name:str, 
+                     material_type:eMatType, 
+                     E:float, U:float, A:float, 
+                     mass_per_volume:float):
         """
         Añade un material al modelo
         
@@ -23,11 +32,65 @@ class ModelBuilder:
         """
         self.model.PropMaterial.SetMaterial(material_name, material_type)
         self.model.PropMaterial.SetMPIsotropic(material_name, E, U, A)
-        self.model.PropMaterial.SetWeightAndMass(material_name, 1, weight_per_volume)
+        self.model.PropMaterial.SetWeightAndMass(material_name, 2, mass_per_volume)
         print(f"Material '{material_name}' añadido")
         
-    def set_point_restraint(self, point_name, UX=False, UY=False, UZ=False, 
-                           RX=False, RY=False, RZ=False):
+    def add_uniaxial_material(self, 
+                          material_name: str, 
+                          material_type: eMatType, 
+                          E: float, 
+                          A: float,
+                          mass_per_volume: float):
+        """
+        Añade un material uniaxial al modelo (para elementos tipo cable, tendón, etc.)
+        
+        Parameters:
+        -----------
+        material_name : str
+            Nombre del material
+        material_type : eMatType
+            Tipo de material (1=Steel, 2=Concrete, 3=NoDesign, etc.)
+        E : float
+            Módulo de elasticidad
+        A : float
+            Coeficiente de expansión térmica
+        mass_per_volume : float
+            Peso por unidad de volumen
+        """
+        self.model.PropMaterial.SetMaterial(material_name, material_type)
+        self.model.PropMaterial.SetMPUniaxial(material_name, E, A)
+        self.model.PropMaterial.SetWeightAndMass(material_name, 2, mass_per_volume)
+        print(f"Material uniaxial '{material_name}' añadido")
+        
+    def add_concrete_material(self,name,fc=21*u.MPa,
+                              E=None,U=0.15,A=0.0000099,
+                              mass_per_volume=2400*u.kg/u.m**3):
+        if (u.system == 'SI') and (E is None):
+            E = 4700*(fc*u.MPa)**0.5
+            print(E/(u.kgf/u.m**3))
+        elif (u.system == 'MKS') and (E is None):
+            E = 15000*(fc*u.kgf)**0.5
+            print(E/(u.kgf/u.m**3))
+        elif E is None:
+            raise NotImplementedError('Cálculo del módulo de Elasticidad no Implementado')
+            
+        return self.add_material(name,eMatType.Concrete,
+                                E,U,A,mass_per_volume)
+        
+    def add_steel_material(self,name,E=2e5*u.MPa,
+                           U=0.30,A=0.0000117,
+                           mass_per_volume=7850*u.kg/u.m**3):
+        return self.add_material(name,eMatType.Steel,
+                                E,U,A,mass_per_volume)
+        
+    def add_rebar_material(self,name,E=2e5*u.MPa,
+                           A=0.0000117,
+                           mass_per_volume=7850*u.kg/u.m**3):
+        return self.add_uniaxial_material(name,eMatType.Rebar,
+                                E,A,mass_per_volume)
+        
+    def set_point_restraint(self, point_name, UX=True, UY=True,
+                        UZ=True, RX=True, RY=True, RZ=True):
         """
         Define restricciones en un punto
         
@@ -64,6 +127,7 @@ class ModelBuilder:
             Ancho de la sección
         """
         self.model.PropFrame.SetRectangle(section_name, material_name, t3, t2)
+        # SetRebarBeam / SetRebarColumn
         print(f"Sección rectangular '{section_name}' añadida: {t2} x {t3}")
         
     def add_circle_section(self, section_name, material_name, diameter):
@@ -1050,64 +1114,3 @@ class ModelBuilder:
         self.model.RespCombo.SetCaseList(combo_name, 0, case_name, scale_factor)
         print(f"Caso '{case_name}' añadido a combo '{combo_name}' con factor {scale_factor}")
         
-    # def build_from_extraction(self, extraction_data, element_type='frames'):
-    #     """
-    #     Construye elementos en el modelo desde datos extraídos
-        
-    #     Parameters:
-    #     -----------
-    #     extraction_data : dict
-    #         Datos extraídos por DataExtractor
-    #     element_type : str
-    #         Tipo de elemento ('frames', 'points', 'materials', 'slabs', 'walls')
-    #     """
-    #     if element_type == 'materials' and 'materials' in extraction_data:
-    #         df = extraction_data['materials']
-    #         for _, row in df.iterrows():
-    #             try:
-    #                 self.add_material(
-    #                     row['Material'], row['Type'], row['E'], 
-    #                     row['U'], row['A'], row['WeightPerVolume']
-    #                 )
-    #             except Exception as e:
-    #                 print(f"Error añadiendo material {row['Material']}: {e}")
-        
-    #     elif element_type == 'points' and 'geometry' in extraction_data:
-    #         df = extraction_data['geometry']
-    #         for _, row in df.iterrows():
-    #             try:
-    #                 self.add_point(row['Point'], row['X'], row['Y'], row['Z'])
-    #                 if any([row['UX'], row['UY'], row['UZ'], row['RX'], row['RY'], row['RZ']]):
-    #                     self.set_point_restraint(
-    #                         row['Point'], row['UX'], row['UY'], row['UZ'],
-    #                         row['RX'], row['RY'], row['RZ']
-    #                     )
-    #             except Exception as e:
-    #                 print(f"Error añadiendo punto {row['Point']}: {e}")
-        
-    #     elif element_type == 'frames':
-    #         Primero crear secciones
-    #         if 'sections' in extraction_data:
-    #             df_sections = extraction_data['sections']
-    #             for _, row in df_sections.iterrows():
-    #                 try:
-    #                     Simplificado - solo secciones rectangulares por ahora
-    #                     if row['SectionType'] == 'Rectangular':
-    #                         Necesitaríamos el material de alguna forma
-    #                         pass
-    #                 except Exception as e:
-    #                     print(f"Error añadiendo sección {row['SectionName']}: {e}")
-            
-    #         Luego crear frames
-    #         if 'geometry' in extraction_data:
-    #             df_geo = extraction_data['geometry']
-    #             for _, row in df_geo.iterrows():
-    #                 try:
-    #                     self.add_frame(
-    #                         row['Frame'], row['PointI'], row['PointJ'], row['Section']
-    #                     )
-    #                 except Exception as e:
-    #                     print(f"Error añadiendo frame {row['Frame']}: {e}")
-        
-    #     else:
-    #         raise ValueError(f"Tipo de elemento '{element_type}' no soportado o datos faltantes")

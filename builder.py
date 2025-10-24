@@ -1,12 +1,5 @@
-from csi_py import CSIHandler
-
 class ModelBuilder:
-    """Clase para construir modelos CSI desde la API"""
-    
-    def __init__(self, csi_handler:CSIHandler):
-        self.handler  = csi_handler
-        self.model = csi_handler.model
-        
+    '''Mixin de modelamiento con API de ETABS'''   
     # ==================== MATERIALS ====================
     
     def add_material(self, material_name, material_type, E, U, A, weight_per_volume):

@@ -11,9 +11,9 @@ def format_list_args(names,defect_values=None,check_values=True):
         names = [str(names).strip()]
     if isinstance(names,(list,tuple)):
         names = [str(name).strip() for name in names if name]
-    
     if (defect_values is not None) and check_values:
         return [name for name in names if name in defect_values]
+    return names
         
 
 class DataExtractor:
@@ -22,6 +22,8 @@ class DataExtractor:
     def __init__(self):
         super().__init__()
         self._stories = None
+        
+        self._tabular_data = None
         
         self._cases = None
         self._combos = None
@@ -55,29 +57,20 @@ class DataExtractor:
         '''
         metodo de formateo de tablas (por defecto elige envolventes en casos de carga compuesto)
         '''
-
-        SapModel = self.model
-        IsUserBaseReactionLocation=False
-        UserBaseReactionX=0.
-        UserBaseReactionY=0.
-        UserBaseReactionZ=0.
-        IsAllModes=True
-        StartMode=0
-        EndMode=0
-        IsAllBucklingModes=True
-        StartBucklingMode=0
-        EndBucklingMode=0
         MultistepStatic=1 if set_envelopes else 2
         NonlinearStatic=1 if set_envelopes else 2
-        ModalHistory=1
-        DirectHistory=1
-        Combo=2
-        SapModel.DataBaseTables.SetOutputOptionsForDisplay(IsUserBaseReactionLocation,UserBaseReactionX,UserBaseReactionY,UserBaseReactionZ,IsAllModes,StartMode,EndMode,IsAllBucklingModes,StartBucklingMode,EndBucklingMode,MultistepStatic,NonlinearStatic,ModalHistory,DirectHistory,Combo)
+        self.model.DataBaseTables.SetOutputOptionsForDisplay(False,False,0,0,True,0,0,True,0,0,MultistepStatic,NonlinearStatic,1,1,2)
         
     @property
     def available_tables(self):
         data = self.model.DatabaseTables.GetAvailableTables()
-        return dict(zip(data[1],data[3]))
+        return pd.DataFrame(zip(data[1],data[3]),columns=['Table','ImportType'])
+    
+    @property
+    def editable_tables(self):
+        df = self.available_tables
+        df = df[df['ImportType'].isin([2,3])].reset_index(drop=True)
+        return df
     
     def get_table(self, table_name, set_envelopes=True):
         """
@@ -106,6 +99,16 @@ class DataExtractor:
         data = data.values.reshape(num_records, len(columns))
         table = pd.DataFrame(data, columns=columns)
         return table
+    
+    @property
+    def tabular_data(self):
+        if self._tabular_data is None:
+            table_data = {}
+            for table in self.editable_tables['Table']:
+                data = self.get_table(table,set_envelopes=False)
+                table_data[table] = data
+            self._tabular_data = table_data
+        return self._tabular_data
         
     @property
     def stories(self):
@@ -118,6 +121,7 @@ class DataExtractor:
             load_cases = [i for i in load_cases if i[0] != '~']
             self._cases =  list(load_cases)
         return self._cases
+    
     
     @property
     def combos(self):
@@ -187,6 +191,23 @@ class DataExtractor:
         self.model.DatabaseTables.SetLoadCasesSelectedForDisplay(cases_and_combos)
         self.model.DatabaseTables.SetLoadCombinationsSelectedForDisplay(cases_and_combos)
         
+    def get_response_spectrum(self,spectrum_names='all'):
+        tables = self.editable_tables['Table']
+        tables = tables[tables.str.contains('Functions - Response Spectrum')]
+        cols = ['Name','Period','Value','DampRatio']
+        data = pd.DataFrame(columns=cols)
+        for table in tables:
+            df = self.get_table(table)
+            data = pd.concat([data,df[cols]],ignore_index=True)
+            
+        if spectrum_names=='all':
+            return data
+        elif spectrum_names not in data['Name'].values:
+            raise ValueError(f"Nombre de espectro no definido: {spectrum_names}")
+        else:
+            spectrum_names = [spectrum_names] if isinstance(spectrum_names,(str))\
+                else spectrum_names
+            return data[data['Name'].isin(spectrum_names)]
     
     # ==================== MATERIALS ====================
     @property
@@ -623,10 +644,16 @@ class DataExtractor:
             walls = self.map_wall_properties(section,walls)
             slabs = self.map_slab_properties(section,slabs)
             decks = self.map_deck_properties(section,decks)
-        
-        self._wall_sections_data = pd.DataFrame(walls)
-        self._slab_sections_data = pd.DataFrame(slabs)
-        self._deck_sections_data = pd.DataFrame(decks)
+            
+        for name in ['walls', 'slabs', 'decks']:
+            df = pd.DataFrame(locals()[name]) 
+            num_cols = df.select_dtypes(include='number').columns
+            df[num_cols] = df[num_cols].fillna(0)
+            locals()[name] = df
+            
+        self._wall_sections_data = walls
+        self._slab_sections_data = slabs
+        self._deck_sections_data = decks
 
     
     @property
@@ -776,9 +803,4 @@ class DataExtractor:
         """Obtiene la lista de elementos piso"""
         properties = self.area_geometry
         return list(properties[properties['type']=='wall']['name'])
-    
-
-
-    
-
    

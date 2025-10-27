@@ -136,15 +136,14 @@ class CSIHandler(DataExtractor,
         unit: unidad definida en el diccionario: units_dict
         '''
         self.model.SetPresentUnits(eUnits[self.units])
-        
-        
+
         
 if __name__ == '__main__':
     import time
     etabs_model = CSIHandler('Etabs')
     etabs_model.connect_open_instance()
     to = time.time()
-    print(etabs_model.add_rectangle_section('S1','C f\'c = 21 MPa',0.5,0.3))
+    print(etabs_model.get_response_spectrum('ESPECTRO E.030-2018'))
     print(time.time()-to)
     # to = time.time()
     # print(etabs_model.area_properties)

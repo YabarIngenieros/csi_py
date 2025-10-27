@@ -4,6 +4,39 @@ class ModelBuilder:
     '''Mixin de modelamiento con API de ETABS'''  
     def __init__(self):
         super().__init__()
+        
+        
+    # ==================== LOAD COMBINATIONS ====================
+    
+    def add_load_combo(self, combo_name, combo_type=0):
+        """
+        Añade una combinación de carga
+        
+        Parameters:
+        -----------
+        combo_name : str
+            Nombre de la combinación
+        combo_type : int
+            Tipo (0=Linear Add, 1=Envelope, 2=Absolute Add, etc.)
+        """
+        self.model.RespCombo.Add(combo_name, combo_type)
+        print(f"Combinación de carga '{combo_name}' añadida")
+    
+    def set_combo_case(self, combo_name, case_name, scale_factor):
+        """
+        Añade un caso a una combinación con su factor
+        
+        Parameters:
+        -----------
+        combo_name : str
+            Nombre de la combinación
+        case_name : str
+            Nombre del caso
+        scale_factor : float
+            Factor de escala
+        """
+        self.model.RespCombo.SetCaseList(combo_name, 0, case_name, scale_factor)
+        print(f"Caso '{case_name}' añadido a combo '{combo_name}' con factor {scale_factor}")
      
     # ==================== MATERIALS ====================
     
@@ -1082,35 +1115,4 @@ class ModelBuilder:
         self.model.AreaObj.SetLoadUniform(area_name, load_pattern, value, direction)
         print(f"Carga uniforme añadida a área '{area_name}'")
     
-    # ==================== LOAD COMBINATIONS ====================
     
-    def add_load_combo(self, combo_name, combo_type=0):
-        """
-        Añade una combinación de carga
-        
-        Parameters:
-        -----------
-        combo_name : str
-            Nombre de la combinación
-        combo_type : int
-            Tipo (0=Linear Add, 1=Envelope, 2=Absolute Add, etc.)
-        """
-        self.model.RespCombo.Add(combo_name, combo_type)
-        print(f"Combinación de carga '{combo_name}' añadida")
-    
-    def set_combo_case(self, combo_name, case_name, scale_factor):
-        """
-        Añade un caso a una combinación con su factor
-        
-        Parameters:
-        -----------
-        combo_name : str
-            Nombre de la combinación
-        case_name : str
-            Nombre del caso
-        scale_factor : float
-            Factor de escala
-        """
-        self.model.RespCombo.SetCaseList(combo_name, 0, case_name, scale_factor)
-        print(f"Caso '{case_name}' añadido a combo '{combo_name}' con factor {scale_factor}")
-        

@@ -1,4 +1,4 @@
-from constants import eMatType,u
+from .constants import eMatType,u
 
 class ModelBuilder:
     '''Mixin de modelamiento con API de ETABS'''  

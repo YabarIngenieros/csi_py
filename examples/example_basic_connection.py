@@ -18,15 +18,15 @@ def main():
     print()
     
     # Crear handler y conectar
-    model = CSIHandler(program='ETABS', units='kN_m_C')
+    handler = CSIHandler(program='ETABS', units='kN_m_C')
     
     try:
         # Conectar a la instancia activa
-        model.connect_open_instance()
+        handler.connect_open_instance()
         
         # Información básica
-        print(f"Conectado a: {model.file_name}")
-        print(f"Ruta completa: {model.file_path}")
+        print(f"Conectado a: {handler.file_name}")
+        print(f"Ruta completa: {handler.file_path}")
         print()
         
         # Obtener información del modelo
@@ -34,9 +34,9 @@ def main():
         
         # Número de elementos (si el modelo tiene el método disponible)
         try:
-            num_points = model.model.PointObj.Count()
-            num_frames = model.model.FrameObj.Count()
-            num_areas = model.model.AreaObj.Count()
+            num_points = handler.model.PointObj.Count()
+            num_frames = handler.model.FrameObj.Count()
+            num_areas = handler.model.AreaObj.Count()
             
             print(f"Puntos: {num_points}")
             print(f"Frames: {num_frames}")
@@ -52,8 +52,8 @@ def main():
         print(f"Error inesperado: {e}")
     finally:
         # Cerrar la conexión
-        if model.object is not None:
-            model.close()
+        if handler.object is not None:
+            handler.close()
 
 if __name__ == "__main__":
     main()

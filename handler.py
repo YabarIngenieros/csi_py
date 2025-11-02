@@ -1,6 +1,6 @@
-from constants import eUnits,u
-from extractor import DataExtractor
-from builder import ModelBuilder
+from .constants import eUnits,u
+from .extractor import DataExtractor
+from .builder import ModelBuilder
 
 import comtypes.client
 import pandas as pd

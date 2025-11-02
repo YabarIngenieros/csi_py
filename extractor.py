@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 
-from constants import EtabsError, eFramePropType
+from .constants import EtabsError, eFramePropType
 
 # funciones de normalización
 def format_list_args(names,defect_values=None,check_values=True):
@@ -44,6 +44,7 @@ class DataExtractor:
         
         self._frame_sections_data = None
         self._frame_list = None
+        self._frame_label_names = None
         self._frames_properties = None
         self._frames_forces = None
         
@@ -110,9 +111,8 @@ class DataExtractor:
             self._tabular_data = table_data
         return self._tabular_data
         
-    @property
-    def stories(self):
-        return self.model.Story.GeStories()[1]
+    
+    # ==================== LOADS ====================
         
     @property
     def cases(self):
@@ -460,11 +460,21 @@ class DataExtractor:
         import numpy as np
         length = np.sqrt(sum((coord_j[i] - coord_i[i])**2 for i in range(3)))
         return length
+
+    @property
+    def frame_label_names(self):
+        if self._frame_label_names is None:
+            data = self.model.FrameObj.GetLabelNameList()
+            df = {'Frame':data[1],'Label':data[2],'Story':data[3]}
+            self._frame_label_names = pd.DataFrame(df)
+        return self._frame_label_names
     
     @property
     def frames_properties(self):
         if self._frames_properties is None:
             data = pd.DataFrame({'Frame':self.frame_list})
+            label_data = self.frame_label_names
+            data = data.merge(label_data, on='Frame')
             data['Section'] = data['Frame'].map(self.get_frame_section)
             data[['point_i', 'point_j']] = data['Frame'].map(
                 self.get_frame_points).apply(pd.Series)
@@ -493,7 +503,7 @@ class DataExtractor:
         """
         frames = format_list_args(frame_name,self.frame_list)
         cases_and_combos = format_list_args(cases_and_combos,
-                            self.handler.design_cases_and_combos)
+                            self.design_cases_and_combos)
         data = {
             'Frame': [], 'Station': [], 'OutputCase': [], 
             'StepType': [], 'StepNumber': [],
@@ -803,4 +813,118 @@ class DataExtractor:
         """Obtiene la lista de elementos piso"""
         properties = self.area_geometry
         return list(properties[properties['type']=='wall']['name'])
+    
+    @property
+    def pier_list(self):
+        return list(self.model.PierLabel.GetNameList()[1])
+    
+    def extract_pier_forces(self,piers=None,cases_and_combos=None):
+        cases_and_combos = format_list_args(cases_and_combos,
+                            self.design_cases_and_combos)
+        self.model.Results.Setup.DeselectAllCasesAndCombosForOutput()
+        for case in cases_and_combos:
+            self.model.Results.Setup.SetCaseSelectedForOutput(case)
+            self.model.Results.Setup.SetComboSelectedForOutput(case)
+        
+        df = {'Pier':[],'Story':[],'OutputCase':[],
+                'Location':[],'P':[],'V2':[],'V3':[],
+                'T':[],'M2':[],'M3':[]}
+            
+        data = self.model.Results.PierForce()
+
+        if data[-1] == 1:
+            self.model.Analyze.RunAnalysis()
+
+        df['Pier'].extend(data[2])
+        df['Story'].extend(data[1])
+        df['OutputCase'].extend(data[3])
+        df['Location'].extend(data[4])
+        df['P'].extend(data[5])
+        df['V2'].extend(data[6])
+        df['V3'].extend(data[7])
+        df['T'].extend(data[8])
+        df['M2'].extend(data[9])
+        df['M3'].extend(data[10])
+        df = pd.DataFrame(df)
+        
+        if piers is None:
+            return df
+        piers = format_list_args(piers,self.pier_list)
+        
+        return df[df['Pier'].isin(piers)]
+        
+    @property
+    def pier_forces(self):
+        self.model.DesignForces.PierDesignForces()
    
+
+    # ==================== STORIES ====================   
+    @property
+    def stories(self):
+        return self.model.Story.GeStories()[1]
+    
+    def get_story_height(self,story):
+        return self.model.Story.GetHeight(story)[0]
+    
+    def get_story_forces(self,cases_and_combos=None):
+        cases_and_combos = format_list_args(cases_and_combos,
+                            self.design_cases_and_combos)
+        
+        self.model.DatabaseTables.\
+            SetLoadCasesSelectedForDisplay(cases_and_combos)
+        self.model.DatabaseTables.\
+            SetLoadCombinationsSelectedForDisplay(cases_and_combos)
+            
+        self.set_envelopes_for_dysplay()
+        df = self.get_table('Story Forces')
+        df[['P','VX','VY','T','MX','MY']] =\
+            df[['P','VX','VY','T','MX','MY']].astype(float)
+        df['Height'] = df['Story'].map(self.get_story_height)
+        df = df.drop(['CaseType','StepNumber','StepLabel'],axis=1)
+        
+        return df
+    
+    @property
+    def story_forces(self):
+        return self.get_story_forces()
+    
+    def get_story_displacements(self,cases_and_combos=None):
+        cases_and_combos = format_list_args(cases_and_combos,
+                            self.seismic_cases_and_combos)
+        self.model.DatabaseTables.\
+            SetLoadCasesSelectedForDisplay(cases_and_combos)
+        self.model.DatabaseTables.\
+            SetLoadCombinationsSelectedForDisplay(cases_and_combos)
+            
+        df = self.get_table('Story Max Over Avg Displacements')
+        df[['Maximum','Average','Ratio']] =\
+            df[['Maximum','Average','Ratio']].astype(float)
+        df['Height'] = df['Story'].map(self.get_story_height)
+        df = df.drop(['CaseType','StepNumber','StepLabel'],axis=1)
+        
+        return df
+    
+    @property
+    def story_displacements(self):
+        return self.get_story_displacements()
+    
+    def get_story_drifts(self,cases_and_combos=None):
+        cases_and_combos = format_list_args(cases_and_combos,
+                            self.seismic_cases_and_combos)
+        self.model.DatabaseTables.\
+            SetLoadCasesSelectedForDisplay(cases_and_combos)
+        self.model.DatabaseTables.\
+            SetLoadCombinationsSelectedForDisplay(cases_and_combos)
+            
+        df = self.get_table('Diaphragm Max Over Avg Drifts')
+        df[['Max Drift','Avg Drift','Ratio']] =\
+            df[['Max Drift','Avg Drift','Ratio']].astype(float)
+        df['Height'] = df['Story'].map(self.get_story_height)
+        df = df.drop(['CaseType','StepNumber','StepLabel',
+                      'Max Loc X','Max Loc Y','Max Loc Z','Label'],axis=1)
+        return df
+    
+    @property
+    def story_drifts(self):
+        return self.get_story_drifts()
+  

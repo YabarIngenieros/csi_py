@@ -85,16 +85,16 @@ def main():
     from csi_py import CSIHandler
     
     # Crear handler
-    model = CSIHandler(program='ETABS', units='kN_m_C')
+    handler = CSIHandler(program='ETABS', units='kN_m_C')
     
     # Conectar a instancia abierta
-    model.connect_open_instance()
+    handler.connect_open_instance()
     
     # Trabajar con el modelo
     print(f"Conectado a: {model.file_name}")
     
     # Cerrar
-    model.close()
+    handler.close()
     """)
     
     print("\n" + "=" * 60)

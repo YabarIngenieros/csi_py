@@ -880,7 +880,7 @@ class DataExtractor:
         df[['P','VX','VY','T','MX','MY']] =\
             df[['P','VX','VY','T','MX','MY']].astype(float)
         df['Height'] = df['Story'].map(self.get_story_height)
-        df = df.drop(['CaseType','StepNumber','StepLabel'],axis=1)
+        df = df.drop(['CaseType'],axis=1)
         
         return df
     

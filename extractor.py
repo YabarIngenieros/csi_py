@@ -82,7 +82,7 @@ class DataExtractor:
         data = self.model.DatabaseTables.GetTableForDisplayArray(
             table_name, FieldKeyList='', GroupName=''
         )
-        flag = data[5]
+        flag = data[-1]
         if flag == 1:
             self.model.Analyze.RunAnalysis()
             return self.get_table(table_name,set_envelopes)
@@ -831,7 +831,7 @@ class DataExtractor:
                 'T':[],'M2':[],'M3':[]}
             
         data = self.model.Results.PierForce()
-
+ 
         if data[-1] == 1:
             self.model.Analyze.RunAnalysis()
 
@@ -845,8 +845,9 @@ class DataExtractor:
         df['T'].extend(data[8])
         df['M2'].extend(data[9])
         df['M3'].extend(data[10])
+   
         df = pd.DataFrame(df)
-        
+   
         if piers is None:
             return df
         piers = format_list_args(piers,self.pier_list)
@@ -855,7 +856,7 @@ class DataExtractor:
         
     @property
     def pier_forces(self):
-        self.model.DesignForces.PierDesignForces()
+        return self.extract_pier_forces()
    
 
     # ==================== STORIES ====================   
@@ -880,7 +881,7 @@ class DataExtractor:
         df[['P','VX','VY','T','MX','MY']] =\
             df[['P','VX','VY','T','MX','MY']].astype(float)
         df['Height'] = df['Story'].map(self.get_story_height)
-        df = df.drop(['CaseType','StepNumber','StepLabel'],axis=1)
+        df = df.drop(['CaseType'],axis=1)
         
         return df
     

@@ -881,7 +881,8 @@ class DataExtractor:
         df[['P','VX','VY','T','MX','MY']] =\
             df[['P','VX','VY','T','MX','MY']].astype(float)
         df['Height'] = df['Story'].map(self.get_story_height)
-        df = df.drop(['CaseType'],axis=1)
+        drop_columns = {'Casetype','StepNumber','StepLabel'}.intersection(df.columns)
+        df = df.drop(drop_columns,axis=1)
         
         return df
     
@@ -901,7 +902,8 @@ class DataExtractor:
         df[['Maximum','Average','Ratio']] =\
             df[['Maximum','Average','Ratio']].astype(float)
         df['Height'] = df['Story'].map(self.get_story_height)
-        df = df.drop(['CaseType','StepNumber','StepLabel'],axis=1)
+        drop_columns = {'Casetype','StepNumber','StepLabel'}.intersection(df.columns)
+        df = df.drop(drop_columns,axis=1)
         
         return df
     
@@ -921,8 +923,10 @@ class DataExtractor:
         df[['Max Drift','Avg Drift','Ratio']] =\
             df[['Max Drift','Avg Drift','Ratio']].astype(float)
         df['Height'] = df['Story'].map(self.get_story_height)
-        df = df.drop(['CaseType','StepNumber','StepLabel',
-                      'Max Loc X','Max Loc Y','Max Loc Z','Label'],axis=1)
+        drop_columns = {'Casetype','StepNumber','StepLabel',
+                        'Max Loc X','Max Loc Y','Max Loc Z','Label'}.\
+                            intersection(df.columns)
+        df = df.drop(drop_columns,axis=1)
         return df
     
     @property

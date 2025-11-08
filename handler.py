@@ -3,12 +3,10 @@ from .extractor import DataExtractor
 from .builder import ModelBuilder
 
 import comtypes.client
-import pandas as pd
-import numpy as np
 import psutil
 import os
 
-def validate_programs(program):
+def validate_programs(program:str):
     # Validar y estandarizar el programa
     program = program.upper().strip()
     
@@ -70,6 +68,7 @@ class CSIHandler(DataExtractor,
         self.file_path = None
         self.file_name = None
         self.units = units
+        self.is_connected = False
 
         helper = comtypes.client.CreateObject(f'{program}v1.Helper')
         module = getattr(comtypes.gen, f'{program}v1')
@@ -99,6 +98,7 @@ class CSIHandler(DataExtractor,
         self.file_path = self.model.GetModelFilename()
         self.file_name = os.path.basename(self.file_path)
         self.set_units()
+        self.is_connected = True
         print(f'Conectado a {self.file_name}')
             
     def open_and_connect(self,file_path):
@@ -116,6 +116,7 @@ class CSIHandler(DataExtractor,
         self.file_path = file_path
         self.file_name = os.path.basename(self.file_path)
         self.set_units()
+        self.is_connected = True
         print(f'Conectado a {self.file_name}')
         
         
@@ -123,10 +124,10 @@ class CSIHandler(DataExtractor,
         '''
         cerrar
         '''
-        #SapModel.SetModelIsLocked(False)
         self.object.ApplicationExit(True)
         self.object = None
         self.model= None
+        self.is_connected = False
         print(f'{self.file_name} cerrado')
         
     def set_units(self):

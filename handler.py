@@ -49,9 +49,9 @@ def get_paths(program='ETABS'):
     helper = helper.QueryInterface(module.cHelper)
     for pid in pids:
         etabs_object = helper.GetObjectProcess(
-            f"CSI.ETABS.{program}.ETABSObject" 
-            if program in ['ETABS','SAFE'] 
-            else "CSI.SAP2000.API.SapObject", pid)
+            f"CSI.{program}.API.ETABSObject" 
+                if program in ['ETABS','SAFE'] 
+                else "CSI.SAP2000.API.SapObject", pid)
         paths.append(etabs_object.SapModel.GetModelFilename())
         
     return {pid:path for pid,path in 
@@ -100,15 +100,16 @@ class CSIHandler(DataExtractor,
         self.set_units()
         self.is_connected = True
         print(f'Conectado a {self.file_name}')
+        return True
             
     def open_and_connect(self,file_path):
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"El archivo no existe: {file_path}")
-        
+
         program = self.program
         self.object = self.helper.CreateObjectProgID(
-                f"CSI.{program}.API.ETABSObject" 
-                if program in ['ETABS','SAFE'] 
+                f"CSI.{program}.API.ETABSObject"
+                if program in ['ETABS','SAFE']
                 else "CSI.SAP2000.API.SapObject")
         self.object.ApplicationStart()
         self.model = self.object.SapModel
@@ -118,7 +119,66 @@ class CSIHandler(DataExtractor,
         self.set_units()
         self.is_connected = True
         print(f'Conectado a {self.file_name}')
+        return True
+
+    def open_empty_instance(self, units=None):
+        """
+        Abre una nueva instancia del programa con un modelo vacío
+
+        Parameters:
+        -----------
+        units : str, optional
+            Unidades a usar (si no se especifica, usa las del objeto)
+
+        Returns:
+        --------
+        bool
+            True si se conectó exitosamente
+        """
+        program = self.program
+
+        # Crear nueva instancia del programa
+        self.object = self.helper.CreateObjectProgID(
+                f"CSI.{program}.API.ETABSObject"
+                if program in ['ETABS','SAFE']
+                else "CSI.SAP2000.API.SapObject")
+
+        # Iniciar la aplicación
+        self.object.ApplicationStart()
+
+        # Obtener el modelo (ya viene vacío/nuevo)
+        self.model = self.object.SapModel
+
+        # Inicializar un nuevo modelo vacío
+        if program == 'ETABS':
+            # Para ETABS, inicializar modelo vacío
+            self.model.InitializeNewModel()
+            self.model.File.NewBlank()
+            self.file_path = ""
+            self.file_name = "Untitled"
+        elif program == 'SAP2000':
+            self.model.InitializeNewModel()
+            self.model.File.NewBlank()
+            self.file_path = ""
+            self.file_name = "Untitled"
+        else:  # SAFE
+            self.model.InitializeNewModel()
+            self.model.File.NewBlank()
+            self.file_path = ""
+            self.file_name = "Untitled"
+
+        # Establecer unidades
+        if units:
+            self.units = units
+        self.set_units()
+
+        self.is_connected = True
+        print(f'Nueva instancia de {program} abierta (modelo vacío)')
+        return True
         
+    def save(self,model_path):
+        self.model.File.Save(model_path)
+        return model_path
         
     def close(self):
         '''
@@ -129,6 +189,10 @@ class CSIHandler(DataExtractor,
         self.model= None
         self.is_connected = False
         print(f'{self.file_name} cerrado')
+        return True
+    
+    def refresh_view(self):
+        self.model.View.RefreshView()
         
     def set_units(self):
         '''
@@ -144,7 +208,7 @@ if __name__ == '__main__':
     etabs_model = CSIHandler('Etabs')
     etabs_model.connect_open_instance()
     to = time.time()
-    print(etabs_model.get_response_spectrum('ESPECTRO E.030-2018'))
+    print(etabs_model.get_modal_data())
     print(time.time()-to)
     # to = time.time()
     # print(etabs_model.area_properties)

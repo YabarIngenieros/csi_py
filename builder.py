@@ -1,10 +1,41 @@
 from .constants import eMatType,u
+import numpy as np
+from typing import TYPE_CHECKING
 
+if TYPE_CHECKING:
+    import pandas as pd
+
+# funciones auxiliares
+def is_ccw(points):
+    """
+    Verifica si los puntos 3D están en sentido antihorario (CCW)
+    usando solo las dos primeras coordenadas (x, y).
+    points: lista de [(x,y,z), ...] o [(x,y), ...]
+    """
+    area = 0.0
+    n = len(points)
+
+    for i in range(n):
+        x1, y1 = points[i][0], points[i][1]
+        x2, y2 = points[(i + 1) % n][0], points[(i + 1) % n][1]
+        area += (x2 - x1) * (y2 + y1)
+
+    return area < 0
 class ModelBuilder:
     '''Mixin de modelamiento con API de ETABS'''  
     def __init__(self):
         super().__init__()
         
+    # Tables
+    def set_table(self,table_name,table:'pd.DataFrame'):
+        self.model.SetTableForEditingArray(table_name)
+        
+    # POINTS
+    def add_point(self,x,y,z):
+        point = self.model.PointObj.AddCartesian(x,y,z)
+        if point[-1]!=0:
+            raise RuntimeError(f"Error ETABS al crear punto en ({x}, {y}, {z})")
+        return point[0]
         
     # ==================== LOAD COMBINATIONS ====================
     
@@ -406,14 +437,12 @@ class ModelBuilder:
         self.model.PropFrame.SetConcreteBox(section_name, material_name, t3, t2, tf, tw)
         print(f"Sección cajón concreto '{section_name}' añadida: {t2}x{t3}, tf={tf}, tw={tw}")
         
-    def add_concrete_tee_section(self, section_name, material_name, t3, t2, tf, tw):
+    def add_concrete_tee_section(self, section_name, material_name, t3, t2, tf, tw, twt=None, mirror=False):
         """
         Crea una sección T de concreto
-        
+
         Parameters:
         -----------
-        model : CSI Model object
-            Objeto del modelo CSI
         section_name : str
             Nombre de la sección
         material_name : str
@@ -425,9 +454,15 @@ class ModelBuilder:
         tf : float
             Espesor del ala
         tw : float
-            Espesor del alma
+            Espesor del alma (inferior)
+        twt : float, optional
+            Espesor del alma superior (si None, usa tw)
+        mirror : bool, optional
+            Si True, refleja la sección sobre el eje 3 (default: False)
         """
-        self.model.PropFrame.SetConcreteTee(section_name, material_name, t3, t2, tf, tw)
+        if twt is None:
+            twt = tw
+        self.model.PropFrame.SetConcreteTee(section_name, material_name, t3, t2, tf, tw, twt, mirror)
         print(f"Sección T concreto '{section_name}' añadida: h={t3}, bf={t2}")
         
     def add_concrete_L_section(self, section_name, material_name, t3, t2, tf, tw):
@@ -665,7 +700,7 @@ class ModelBuilder:
         func(section_name, material_name, **kwargs)
         
                 
-    def add_frame(self, frame_name, point_i, point_j, section_name):
+    def add_frame(self,  point_i, point_j, section_name):
         """
         Añade un frame entre dos puntos
         
@@ -718,17 +753,15 @@ class ModelBuilder:
         print(f"Sección de losa '{section_name}' añadida: t={thickness} ({slab_types.get(slab_type, 'Unknown')})")
 
 
-    def add_ribbed_slab_section(self, section_name, material_name, 
-                                overall_depth, slab_thickness, stem_width, 
-                                rib_spacing, rib_direction):
+    def add_ribbed_slab_section(self, section_name, material_name,
+                                overall_depth, slab_thickness, stem_width,
+                                rib_spacing, rib_direction=1):
         """
         Crea una sección de losa nervada (ribbed slab)
         NOTA: Esta función requiere DOS llamadas a la API
-        
+
         Parameters:
         -----------
-        model : CSI Model object
-            Objeto del modelo CSI
         section_name : str
             Nombre de la sección
         material_name : str
@@ -741,31 +774,32 @@ class ModelBuilder:
             Ancho de los nervios
         rib_spacing : float
             Espaciamiento entre nervios (centro a centro)
-        rib_direction : int
+        rib_direction : int, default 1
             Dirección de los nervios:
-            - 1 = Local 1 direction
-            - 2 = Local 2 direction
+            - 1 = Parallel to local 1 axis
+            - 2 = Parallel to local 2 axis
         """
-        # Primera llamada: Inicializar como slab básico
+        # Inicializar como slab básico
         self.model.PropArea.SetSlab(section_name, 0, 1, material_name, overall_depth)
-        
-        # Segunda llamada: Configurar como ribbed
+
+        # Configurar como ribbed
         self.model.PropArea.SetSlabRibbed(
-            section_name, 
-            overall_depth, 
+            section_name,
+            overall_depth,
             slab_thickness,
-            stem_width, 
-            rib_spacing, 
-            rib_direction
+            stem_width,  # StemWidthTop (ancho superior del nervio)
+            stem_width,  # StemWidthBot (ancho inferior del nervio)
+            rib_spacing,
+            rib_direction  # RibsParallelTo: 1 = local 1, 2 = local 2
         )
-        
+
         direction_str = "Local 1" if rib_direction == 1 else "Local 2"
         print(f"Sección de losa nervada '{section_name}' añadida:")
         print(f"  - Altura total: {overall_depth}")
         print(f"  - Espesor losa: {slab_thickness}")
         print(f"  - Ancho nervio: {stem_width}")
         print(f"  - Espaciamiento: {rib_spacing}")
-        print(f"  - Dirección: {direction_str}")
+        print(f"  - Nervios paralelos a: {direction_str}")
 
 
     def add_waffle_slab_section(self, section_name, material_name,
@@ -796,10 +830,10 @@ class ModelBuilder:
         rib_spacing_dir2 : float
             Espaciamiento de nervios en dirección 2 (c/c)
         """
-        # Primera llamada: Inicializar como slab básico
+        # Inicializar como slab básico
         self.model.PropArea.SetSlab(section_name, 0, 1, material_name, overall_depth)
         
-        # Segunda llamada: Configurar como waffle
+        # Configurar como waffle
         self.model.PropArea.SetSlabWaffle(
             section_name,
             overall_depth,
@@ -817,15 +851,13 @@ class ModelBuilder:
         print(f"  - Nervios Dir2: ancho={stem_width_dir2}, espaciamiento={rib_spacing_dir2}")
 
     # ==================== WALLS (MUROS) ====================
-    def add_wall_section(model, section_name, material_name, thickness, 
+    def add_wall_section(self, section_name, material_name, thickness,
                         wall_prop_type=1, shell_type=1):
         """
         Crea una sección de muro
-        
+
         Parameters:
         -----------
-        model : CSI Model object
-            Objeto del modelo CSI
         section_name : str
             Nombre de la sección
         material_name : str
@@ -841,7 +873,7 @@ class ModelBuilder:
             - 1 = Shell-thin (cáscara delgada)
             - 2 = Shell-thick (cáscara gruesa)
         """
-        model.PropArea.SetWall(section_name, wall_prop_type, shell_type, 
+        self.model.PropArea.SetWall(section_name, wall_prop_type, shell_type,
                             material_name, thickness)
         print(f"Sección de muro '{section_name}' añadida: t={thickness}")
         
@@ -1037,6 +1069,18 @@ class ModelBuilder:
         else:
             # Para decks y otros que tienen parámetros diferentes
             func(section_name, **kwargs)
+            
+    def add_area_obj(self,points,section_name):
+        num_points = len(points)
+        if not is_ccw(points):
+            points = list(reversed(points))
+        
+        coords_x = list(np.array(points)[:,0])
+        coords_y = list(np.array(points)[:,1])
+        coords_z = list(np.array(points)[:,2])
+        slab_name = self.model.AreaObj.AddByCoord(num_points, coords_x, coords_y, coords_z)[3]
+        self.model.AreaObj.SetProperty(slab_name, section_name)
+        return slab_name
             
      # ==================== LOAD PATTERNS ====================
     

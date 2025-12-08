@@ -51,7 +51,9 @@ from .handler import (
 from .constants import (
     eUnits,
     eFramePropType,
-    EtabsError
+    EtabsError,
+    eMatType,
+    u
 )
 
 from .extractor import DataExtractor
@@ -61,21 +63,23 @@ from .builder import ModelBuilder
 __all__ = [
     # Clase principal
     'CSIHandler',
-    
+
     # Funciones utilitarias
     'get__pids',
     'get_paths',
     'validate_programs',
-    
+
     # Mixins (para uso avanzado)
     'DataExtractor',
     'ModelBuilder',
-    
+
     # Constantes y enumeraciones
     'eUnits',
     'eFramePropType',
+    'eMatType',
     'EtabsError',
-    
+    'u',
+
     # Metadata
     '__version__',
     '__author__',
@@ -84,6 +88,7 @@ __all__ = [
 
 # Alias para compatibilidad
 Handler = CSIHandler
+CSI = CSIHandler  # Alias más corto
 
 # Información de versión y paquete
 def get_version():

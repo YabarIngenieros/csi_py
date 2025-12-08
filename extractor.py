@@ -53,6 +53,9 @@ class DataExtractor:
         self._deck_sections_data = None
         self._area_geometry = None
         self._area_forces = None
+
+        self._modal_cases = None
+        self._modal_data = None
         
     def set_envelopes_for_dysplay(self,set_envelopes=True):
         '''
@@ -314,7 +317,7 @@ class DataExtractor:
         return self._points_restraints
     
 
-    def extract_point_reactions(self,point_names=None,cases_and_combos=None):
+    def get_point_reactions(self,point_names=None,cases_and_combos=None):
         """
         Extrae reacciones en puntos
         
@@ -363,7 +366,7 @@ class DataExtractor:
     @property
     def points_reactions(self):
         if self._points_reactions is None:
-            data = self.extract_point_reactions()
+            data = self.get_point_reactions()
             cols = ['F1','F2','F3','M1','M2','M3']
             mask = (data[cols].fillna(0) != 0).any(axis=1) 
             self._points_reactions = data[mask].reset_index(drop=True)
@@ -486,7 +489,7 @@ class DataExtractor:
         return self._frames_properties
         
     
-    def extract_frame_forces(self,frame_name=None,cases_and_combos=None):
+    def get_frame_forces(self,frame_name=None,cases_and_combos=None):
         """
         Extrae fuerzas en frames usando API nativa
         
@@ -538,7 +541,7 @@ class DataExtractor:
     @property
     def frames_forces(self):
         if self._frames_forces is None:
-            self._frames_forces = self.extract_frame_forces()
+            self._frames_forces = self.get_frame_forces()
         return self._frames_forces
         
     
@@ -709,7 +712,7 @@ class DataExtractor:
             self._area_geometry = data
         return self._area_geometry              
     
-    def extract_area_forces(self, area_name=None, cases_and_combos=None):
+    def get_area_forces(self, area_name=None, cases_and_combos=None):
         """
         Extrae fuerzas en áreas (losas)
         
@@ -770,7 +773,7 @@ class DataExtractor:
     @property
     def area_forces(self):
         if self._area_forces is None:
-            self._area_forces = self.extract_area_forces(cases_and_combos=self.design_cases)
+            self._area_forces = self.get_area_forces(cases_and_combos=self.design_cases)
         return self._area_forces
     
     # ==================== SLABS/FLOORS ====================
@@ -797,7 +800,8 @@ class DataExtractor:
     def floor_list(self):
         """Obtiene la lista de elementos piso"""
         properties = self.area_geometry
-        return list(properties[properties['type']=='floor']['name'])
+        print(properties)
+        return list(properties[properties['area_type']=='floor']['name'])
     
     
     
@@ -812,13 +816,13 @@ class DataExtractor:
     def wall_list(self):
         """Obtiene la lista de elementos piso"""
         properties = self.area_geometry
-        return list(properties[properties['type']=='wall']['name'])
+        return list(properties[properties['area_type']=='wall']['name'])
     
     @property
     def pier_list(self):
         return list(self.model.PierLabel.GetNameList()[1])
     
-    def extract_pier_forces(self,piers=None,cases_and_combos=None):
+    def get_pier_forces(self,piers=None,cases_and_combos=None):
         cases_and_combos = format_list_args(cases_and_combos,
                             self.design_cases_and_combos)
         self.model.Results.Setup.DeselectAllCasesAndCombosForOutput()
@@ -856,7 +860,7 @@ class DataExtractor:
         
     @property
     def pier_forces(self):
-        return self.extract_pier_forces()
+        return self.get_pier_forces()
    
 
     # ==================== STORIES ====================   
@@ -932,4 +936,45 @@ class DataExtractor:
     @property
     def story_drifts(self):
         return self.get_story_drifts()
+
+    # Analisis modal
+    def get_modal_data(self,cases=None):
+        if self._modal_data is None:
+            cases_and_combos = self.cases_and_combos
+            self.model.Results.Setup.DeselectAllCasesAndCombosForOutput()
+            for case in cases_and_combos:
+                self.model.Results.Setup.SetCaseSelectedForOutput(case)
+                self.model.Results.Setup.SetComboSelectedForOutput(case)
+                
+            res = self.model.Results.ModalParticipatingMassRatios()
+            columns = ['LoadCase','StepType','StepNum','Period','UX','UY',
+                    'UZ','SumUX','SumUY','SumUZ','RX','RY','RZ','SumRX',
+                    'SumRY','SumRZ']
+            df = pd.DataFrame(np.array(res[1:-1]).T
+                            .reshape((res[0],len(columns))),
+                            columns=columns)
+            df = df[['LoadCase','Period','UX','UY','UZ','SumUX','SumUY',
+                     'RZ','SumRZ']]
+            self._modal_data = df
+            
+        if cases is None:
+            return self._modal_data
+        
+        if isinstance(cases,str):
+            cases = [cases]
+        
+        df = df[df['LoadCase'].isin(cases)]
+        
+        return df
+    
+    @property
+    def modal_data(self):
+        return self.get_modal_data()
+    
+    @property
+    def modal_cases(self):
+        if self._modal_cases is None:
+            df = self.modal_data
+            self._modal_cases = list(df['LoadCase'].unique())
+        return self._modal_cases
   

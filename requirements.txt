@@ -1,0 +1,12 @@
+# CSI Python Library - Requirements
+# Dependencias para automatizar y controlar software CSI (ETABS, SAP2000, SAFE)
+
+# Manejo de datos
+pandas>=1.3.0
+numpy>=1.21.0
+
+# Comunicación COM con CSI software
+comtypes>=1.1.10
+
+# Información de procesos del sistema
+psutil>=5.8.0

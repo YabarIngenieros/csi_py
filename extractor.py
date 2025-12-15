@@ -76,32 +76,56 @@ class DataExtractor:
         df = df[df['ImportType'].isin([2,3])].reset_index(drop=True)
         return df
     
-    def get_table(self, table_name, set_envelopes=True):
+    def get_table(self, table_name, set_envelopes=True, to_edit=False, runned=True):
         """
         Método de extracción de tablas, usa envolventes por defecto
         Corre el modelo en caso de no encontrar datos
         """
         self.set_envelopes_for_dysplay(set_envelopes=set_envelopes)
-        data = self.model.DatabaseTables.GetTableForDisplayArray(
-            table_name, FieldKeyList='', GroupName=''
-        )
+
+        if to_edit:
+            # Para edición, usar GetTableForEditingArray
+            data = self.model.DatabaseTables.GetTableForEditingArray(
+                table_name, GroupName=''
+            )
+        else:
+            # Para visualización, usar GetTableForDisplayArray
+            data = self.model.DatabaseTables.GetTableForDisplayArray(
+                table_name, FieldKeyList='', GroupName=''
+            )
+
         flag = data[-1]
         if flag == 1:
+            if to_edit and runned == True:
+                raise ValueError(f"La tabla '{table_name}' no está definida en ETABS.")
             self.model.Analyze.RunAnalysis()
-            return self.get_table(table_name,set_envelopes)
-        
+            return self.get_table(table_name,set_envelopes,runned=True)
+
         elif flag == -96:
             raise ValueError(f"La tabla '{table_name}' no existe en el modelo ETABS.")
-        
+
         elif flag != 0:
             raise EtabsError(f"Error al extraer la tabla, flag devuelto de {flag}")
-        
-        columns = data[2]
-        num_records = data[3]
-        data = [i if i else '' for i in data[4]]
-        data = pd.DataFrame(data)
-        data = data.values.reshape(num_records, len(columns))
-        table = pd.DataFrame(data, columns=columns)
+
+        # Parsear datos según el método usado
+        if to_edit:
+            version = data[0]
+            columns = data[1]
+            num_records = data[2]
+            table_data = [i if i else '' for i in data[3]]
+        else:
+            version = data[1]
+            columns = data[2]
+            num_records = data[3]
+            table_data = [i if i else '' for i in data[4]]
+
+        # Convertir a DataFrame
+        df = pd.DataFrame(table_data)
+        df = df.values.reshape(num_records, len(columns))
+        table = pd.DataFrame(df, columns=columns)
+
+        if to_edit:
+            return version, table
         return table
     
     @property

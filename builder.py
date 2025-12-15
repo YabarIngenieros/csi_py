@@ -1,9 +1,7 @@
 from .constants import eMatType,u
 import numpy as np
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    import pandas as pd
+import pandas as pd
 
 # funciones auxiliares
 def is_ccw(points):
@@ -27,8 +25,66 @@ class ModelBuilder:
         super().__init__()
         
     # Tables
-    def set_table(self,table_name,table:'pd.DataFrame'):
-        self.model.SetTableForEditingArray(table_name)
+    def apply_edited_table(self):
+        apply_result = self.model.DatabaseTables.ApplyEditedTables(True)
+        num_fatal, num_errors, num_warnings, num_info = apply_result[1:5]
+
+        if num_fatal > 0 or num_errors > 0:
+            msg = (
+                f"Errores al aplicar cambios:\n"
+                f"   Fatal: {num_fatal}, Errores: {num_errors}\n"
+                f"   Advertencias: {num_warnings}, Info: {num_info}"
+            )
+            if apply_result[0]:
+                msg += f"\n   Log: {apply_result[5]}"
+            raise RuntimeError(msg)
+        else:
+            import warnings
+            if num_warnings > 0:
+                warnings.warn(f"Advertencias: {num_warnings}", RuntimeWarning)
+                
+        return 0
+    
+    def get_editable_table(self,name,columns):
+        if name in self.available_tables['Table'].values:
+            version,table = self.get_table(name,to_edit=True)
+        else:
+            version = 1
+            table = pd.DataFrame(columns=columns)
+        return version,table
+    
+    def set_table(self, table_name, table:'pd.DataFrame', table_version=1, apply=True):
+        """
+        Modifica una tabla en ETABS
+
+        Parameters:
+        -----------
+        table_name : str
+            Nombre de la tabla a modificar
+        table : pd.DataFrame
+            DataFrame con los datos modificados
+        table_version : int
+            Versión de la tabla (obtenida de get_table con to_edit=True)
+
+        Returns:
+        --------
+        tuple: (flag, TableVersion, FieldsKeysIncluded, NumberRecords)
+        """
+        columns = list(table.columns)
+        data = table.values
+        n_records = data.shape[0]
+        # Aplanar los datos a una lista 1D
+        data = list(data.flatten())
+
+        # Enviar la tabla modificada
+        self.model.DatabaseTables.SetTableForEditingArray(
+            table_name, table_version, columns, n_records, data
+        )
+        if apply:
+            return self.apply_edited_table()
+        else:
+            return 0
+        
         
     # POINTS
     def add_point(self,x,y,z):
@@ -699,6 +755,62 @@ class ModelBuilder:
         func = SECTION_FUNCTIONS[section_type]
         func(section_name, material_name, **kwargs)
         
+    def add_tee_SD_section(self,name,material,height,width,thick):
+        # Tabla 1
+        table_1 = 'Frame Section Property Definitions - Section Designer'
+        columns_1 = ['Name', 'Material', 'DesignType', 'IsDesigned', 'NotSizeType',
+                'NotAutoFact', 'NotUserSize', 'AMod', 'A2Mod', 'A3Mod', 'JMod', 'I2Mod',
+                'I3Mod', 'MMod', 'WMod', 'Color', 'GUID', 'Notes']
+        data_1 = [name,material,'Concrete Column','Yes','Auto','1','']+['1']*8+\
+            ['','','']
+            
+        version,table = self.get_editable_table(table_1,columns_1)
+        
+        if name in table['Name'].values:
+            table[table['Name']==name] = data_1
+        else:
+            table.loc[len(table)] = data_1
+    
+        self.set_table(table_1,table,version,apply=False)
+        
+        # Tabla 2
+        table_2 = 'Section Designer Shapes - Concrete Tee'
+        columns_2 = ['SectionType', 'SectionName', 'ShapeName', 'Material', 'XCenter',
+                'YCenter', 'Rotation', 'MirrorAbt3', 'Height', 'Width', 'FlangeThick',
+                'WebThick', 'Reinforcing', 'RebarMat', 'Color', 'ZOrder']
+        data_2 = ['Frame',name,'ConcTee1',material]+['0']*3+\
+            ['No',f'{height}',f'{width}',f'{thick}',f'{thick}','No','','','1']
+        
+        version,table = self.get_editable_table(table_2,columns_2)
+        
+        if name in table['SectionName'].values:
+            table[table['SectionName']==name] = data_2
+        else:
+            table.loc[len(table)] = data_2
+            
+        self.set_table(table_2,table,version,apply=False)
+        self.apply_edited_table()
+    
+    def add_line_bar_to_section(self,section_name,material,p1,p2,size,max_spacing,end_bars='Yes'):
+        table_name = 'Section Designer Shapes - Reinforcing - Line Bar'
+        columns = ['SectionType', 'SectionName', 'ShapeName', 'Material', 'X1', 'Y1', 'X2',
+       'Y2', 'RebarSize', 'Area', 'HasEndBars', 'LayoutType', 'MaxSpacing',
+       'NumberBars', 'ZOrder']
+        
+        version,table = self.get_editable_table(table_name,columns)
+        
+        if not table.empty:
+            shape_name = max(table['ShapeName'].values)
+            shape_name = shape_name[:-1] + str(int(shape_name[-1])+1)
+        else:
+            shape_name = 'LineBar1'
+        
+        data = ['Frame',section_name,shape_name,material,f'{p1[0]}',f'{p1[1]}',
+                f'{p2[0]}',f'{p2[1]}',f'{size}','',end_bars.capitalize(),'Spacing',
+                f"{max_spacing}",'','2']
+        table.loc[len(table)] = data
+        
+        self.set_table(table_name,table,version,apply=True)
                 
     def add_frame(self,  point_i, point_j, section_name):
         """

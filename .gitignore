@@ -9,6 +9,16 @@ __pycache__/
 # C extensions
 *.so
 
+# ETABS / archivos de modelos (en cualquier carpeta)
+*.EDB
+*.EDB.tlog
+*.$et
+*.K_*
+*.OUT
+*.Y
+*.Y*
+*.ebk
+
 # Distribution / packaging
 .Python
 build/

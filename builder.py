@@ -23,6 +23,8 @@ class ModelBuilder:
     '''Mixin de modelamiento con API de ETABS'''  
     def __init__(self):
         super().__init__()
+        self._section_definitions_table = None
+        self._tee_section_table = None
         
     # Tables
     def apply_edited_table(self):
@@ -85,8 +87,37 @@ class ModelBuilder:
         else:
             return 0
         
+    # ================== GRIDS ================================
+    def set_grid_sitem(self,X:list,Y:list,spacing=True):
+        table_name_1 = 'Grid Definitions - General'
+        table_1:pd.DataFrame # hint
+        version, table_1 = self.get_table(table_name_1,to_edit=True)
         
-    # POINTS
+        if table_1.empty:
+            row = ['T1','G1','Cartesian','0','0','0','Default','','',
+                    '','','']
+            table_1.loc[0] = row
+            self.set_table(table_name_1,table_1,version,apply=True)
+            
+        table_name_2 = 'Grid Definitions - Grid Lines'
+        # reiniciar tabla
+        version,table_2 = self.get_table(table_name_2,to_edit=True)
+        table_2.drop(table_2.index, inplace=True)
+        if spacing:
+            X = np.array([0]+X).cumsum()
+            Y = np.array([0]+Y).cumsum()
+        for x,ID in zip(X,['A','B','C','D','E','F','G','H','I','J','K','L','M']):
+            row = ['G1','X (Cartesian)',ID,f'{x}','','','','','','End','Yes']
+            table_2.loc[len(table_2)] = row
+            
+        for i,y in enumerate(Y):
+            row = ['G1','Y (Cartesian)',f'{i+1}',f'{y}','','','','','','End','Yes']
+            table_2.loc[len(table_2)] = row
+            
+        self.set_table(table_name_2,table_2,version,apply=True)
+            
+        
+    # ===================== POINTS =============================
     def add_point(self,x,y,z):
         point = self.model.PointObj.AddCartesian(x,y,z)
         if point[-1]!=0:
@@ -755,41 +786,94 @@ class ModelBuilder:
         func = SECTION_FUNCTIONS[section_type]
         func(section_name, material_name, **kwargs)
         
-    def add_tee_SD_section(self,name,material,height,width,thick):
+    def apply_tee_sections(self,version_1=1,version_2=1):
+        table_1 = 'Frame Section Property Definitions - Section Designer'
+        table_2 = 'Section Designer Shapes - Concrete Tee'
+        if self._section_definitions_table is None:
+            version_1,self._section_definitions_table = self.get_table(table_1,to_edit=True)
+        if self._tee_section_table is None: # No hay cambios a aplicar
+            return
+        self.set_table(table_1,self._section_definitions_table,version_1,apply=False)
+        self.set_table(table_2,self._tee_section_table,version_2,apply=False)
+        self.apply_edited_table()
+        self._section_definitions_table = None
+        self._tee_section_table = None
+        
+    def add_tee_SD_sections(self,name,material,height,width,thick,apply=False):
+        # Comprobar compatibilidad de los datos
+        vals = [name, height, width, thick]   # obligatorios
+        if isinstance(material, (list,tuple)): 
+            vals += [material] # si material es definido como lista o tupla
+
+        # Si alguno es lista/tupla → todos los obligatorios deben serlo
+        is_seq = [isinstance(v, (list, tuple)) for v in vals]
+
+        if any(is_seq) and not all(is_seq):
+            raise TypeError("No se colocaron datos compatibles")
+
+        # Si son listas/tuplas → misma longitud
+        if all(is_seq):
+            lengths = {len(v) for v in vals} # set
+            if len(lengths) != 1:
+                raise ValueError("Los datos ingresados deben tener la misma longitud")
+            
+        if not isinstance(name,(list,tuple)):
+            name = [name]; height = [height]; width = [width]
+            thick = [thick]; material = [material]
+        if not isinstance(material,(list,tuple)):
+            material = [material]*len(name)
+
         # Tabla 1
         table_1 = 'Frame Section Property Definitions - Section Designer'
+        '''
         columns_1 = ['Name', 'Material', 'DesignType', 'IsDesigned', 'NotSizeType',
                 'NotAutoFact', 'NotUserSize', 'AMod', 'A2Mod', 'A3Mod', 'JMod', 'I2Mod',
                 'I3Mod', 'MMod', 'WMod', 'Color', 'GUID', 'Notes']
-        data_1 = [name,material,'Concrete Column','Yes','Auto','1','']+['1']*8+\
-            ['','','']
+        '''
             
-        version,table = self.get_editable_table(table_1,columns_1)
-        
-        if name in table['Name'].values:
-            table[table['Name']==name] = data_1
+        if self._section_definitions_table is None:
+            version_1,table = self.get_table(table_1,to_edit=True)
         else:
-            table.loc[len(table)] = data_1
-    
-        self.set_table(table_1,table,version,apply=False)
+            version_1=1
+            table = self._section_definitions_table
         
+        for n, mat in zip(name,material):
+            row_add = [n,mat,'Concrete Column','Yes','Auto','1','']\
+                +['1']*8 + ['','','']
+            if n in table['Name'].values:
+                table[table['Name']==n] = row_add
+            else:
+                table.loc[len(table)] = row_add
+        
+        self._section_definitions_table = table
+    
         # Tabla 2
         table_2 = 'Section Designer Shapes - Concrete Tee'
+        '''
         columns_2 = ['SectionType', 'SectionName', 'ShapeName', 'Material', 'XCenter',
                 'YCenter', 'Rotation', 'MirrorAbt3', 'Height', 'Width', 'FlangeThick',
                 'WebThick', 'Reinforcing', 'RebarMat', 'Color', 'ZOrder']
-        data_2 = ['Frame',name,'ConcTee1',material]+['0']*3+\
-            ['No',f'{height}',f'{width}',f'{thick}',f'{thick}','No','','','1']
+        '''
         
-        version,table = self.get_editable_table(table_2,columns_2)
-        
-        if name in table['SectionName'].values:
-            table[table['SectionName']==name] = data_2
+        if self._tee_section_table is None:
+            version_2,table = self.get_table(table_2,to_edit=True)
         else:
-            table.loc[len(table)] = data_2
+            version_2 = 1
+            table = self._tee_section_table
+        
+        for n,mat,h,w,t in zip(name,material,height,width,thick):
+            data_2 = ['Frame',n,'ConcTee1',mat]+['0']*3+\
+                ['No',f'{h}',f'{w}',f'{t}',f'{t}',
+                 'No','','','1']
+            if n in table['SectionName'].values:
+                table[table['SectionName']==n] = data_2
+            else:
+                table.loc[len(table)] = data_2
             
-        self.set_table(table_2,table,version,apply=False)
-        self.apply_edited_table()
+        self._tee_section_table = table
+            
+        if apply:
+            self.apply_tee_sections(version_1,version_2)
     
     def add_line_bar_to_section(self,section_name,material,p1,p2,size,max_spacing,end_bars='Yes'):
         table_name = 'Section Designer Shapes - Reinforcing - Line Bar'

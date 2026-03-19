@@ -14,7 +14,7 @@ setup(
     version="0.1.0",
     author="YabarIngenieros",
     author_email="",
-    description="Biblioteca Python para automatizar software CSI (ETABS, SAP2000, SAFE)",
+    description="Biblioteca Python para automatizar software CSI (ETABS, SAP2000, SAFE) con .NET y COM",
     long_description=read_readme(),
     long_description_content_type="text/markdown",
     url="https://github.com/YabarIngenieros/csi_py",
@@ -49,6 +49,7 @@ setup(
     
     # Dependencias
     install_requires=[
+        "pythonnet>=3.0.0",
         "comtypes>=1.1.0",
         "pandas>=1.3.0",
         "numpy>=1.21.0",

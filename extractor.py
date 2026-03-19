@@ -17,7 +17,11 @@ def format_list_args(names,defect_values=None,check_values=True):
         
 
 class DataExtractor:
-    """Clase para métodos de extracción de información del modelo"""
+    """
+    Mixin con utilidades de lectura, resultados y tablas del modelo CSI.
+
+    Reúne propiedades cacheadas y métodos para extraer geometría, cargas y resultados.
+    """
     
     def __init__(self):
         super().__init__()
@@ -53,14 +57,18 @@ class DataExtractor:
         self._deck_sections_data = None
         self._area_geometry = None
         self._area_forces = None
+        
+        self._strips = None
 
         self._modal_cases = None
         self._modal_data = None
         
     def set_envelopes_for_dysplay(self,set_envelopes=True):
-        '''
-        metodo de formateo de tablas (por defecto elige envolventes en casos de carga compuesto)
-        '''
+        """
+        Configura el formato de resultados mostrado en tablas.
+
+        Por defecto selecciona envolventes para casos compuestos y análisis no lineales.
+        """
         MultistepStatic=1 if set_envelopes else 2
         NonlinearStatic=1 if set_envelopes else 2
         self.model.DataBaseTables.SetOutputOptionsForDisplay(False,False,0,0,True,0,0,True,0,0,MultistepStatic,NonlinearStatic,1,1,2)
@@ -76,10 +84,11 @@ class DataExtractor:
         df = df[df['ImportType'].isin([2,3])].reset_index(drop=True)
         return df
     
-    def get_table(self, table_name, set_envelopes=True, to_edit=False, runned=True):
+    def get_table(self, table_name, set_envelopes=True, to_edit=False, runned=False):
         """
-        Método de extracción de tablas, usa envolventes por defecto
-        Corre el modelo en caso de no encontrar datos
+        Extrae una tabla del modelo para display o edición.
+
+        Puede ejecutar el análisis automáticamente si la tabla no tiene resultados.
         """
         self.set_envelopes_for_dysplay(set_envelopes=set_envelopes)
 
@@ -96,8 +105,8 @@ class DataExtractor:
 
         flag = data[-1]
         if flag == 1:
-            if to_edit and runned == True:
-                raise ValueError(f"La tabla '{table_name}' no está definida en ETABS.")
+            if to_edit or runned == True:
+                return pd.DataFrame()
             self.model.Analyze.RunAnalysis()
             return self.get_table(table_name,set_envelopes,runned=True)
 
@@ -130,6 +139,11 @@ class DataExtractor:
     
     @property
     def tabular_data(self):
+        """
+        Retorna todas las tablas editables como un diccionario de DataFrames.
+
+        El resultado se cachea tras la primera carga.
+        """
         if self._tabular_data is None:
             table_data = {}
             for table in self.editable_tables['Table']:
@@ -165,6 +179,11 @@ class DataExtractor:
         return self._cases_and_combos
         
     def get_combo_cases(self, combo_name):
+        """
+        Retorna los casos base contenidos en una combinación de carga.
+
+        Si la combinación incluye otras combinaciones, el desglose es recursivo.
+        """
         # Obtener la información inicial de la combinación
         combo_info = self.model.RespCombo.GetCaseList(combo_name)
         combo_types = combo_info[1]
@@ -214,11 +233,33 @@ class DataExtractor:
     def seismic_cases_and_combos(self):
         return self.seismic_cases + self.seismic_combos
     
+    @property
+    def gravity_cases(self):
+        return list(set(self.cases).difference(self.seismic_cases))
+    
+    @property
+    def gravity_combos(self):
+        return list(set(self.combos).difference(self.seismic_combos))
+    
+    @property
+    def gravity_cases_and_combos(self):
+        return self.gravity_cases + self.gravity_combos
+    
     def select_cases_and_combos(self,cases_and_combos):
+        """
+        Selecciona casos y combinaciones para la salida tabular activa.
+
+        Esta selección afecta las tablas de resultados extraídas después.
+        """
         self.model.DatabaseTables.SetLoadCasesSelectedForDisplay(cases_and_combos)
         self.model.DatabaseTables.SetLoadCombinationsSelectedForDisplay(cases_and_combos)
         
     def get_response_spectrum(self,spectrum_names='all'):
+        """
+        Extrae funciones de espectro de respuesta desde tablas del modelo.
+
+        Puede devolver todos los espectros o filtrar por nombre.
+        """
         tables = self.editable_tables['Table']
         tables = tables[tables.str.contains('Functions - Response Spectrum')]
         cols = ['Name','Period','Value','DampRatio']
@@ -246,7 +287,11 @@ class DataExtractor:
         return self._material_list
     
     def get_material_properties(self, material_name):
-        """Obtiene propiedades de un material"""
+        """
+        Obtiene propiedades mecánicas básicas de uno o varios materiales.
+
+        Retorna un DataFrame con tipo de material, simetría y constantes principales.
+        """
         material_name = format_list_args(material_name)
         data = {'Material':[],'Type':[],'SymmetricType':[],
                     'E':[],'U':[],'A':[],'G':[]}
@@ -289,7 +334,11 @@ class DataExtractor:
         return self._point_list
     
     def get_point_coordinates(self, point_names):
-        """Obtiene coordenadas de un punto"""
+        """
+        Obtiene coordenadas cartesianas de uno o varios puntos.
+
+        Retorna un DataFrame con columnas ``Point``, ``X``, ``Y`` y ``Z``.
+        """
         point_names = format_list_args(point_names,self.point_list)
         data = {'Point':[],'X':[],'Y':[],'Z':[]}
         for point in point_names:
@@ -312,7 +361,11 @@ class DataExtractor:
         return self._points_coordinates
 
     def get_point_restraints(self,point_names):
-        """Obtiene restricciones de un punto"""
+        """
+        Obtiene las restricciones asignadas a uno o varios puntos.
+
+        El resultado indica grados de libertad traslacionales y rotacionales restringidos.
+        """
         point_names = format_list_args(point_names,self.point_list)
         data = {'Point':[],'UX':[],'UY':[],'UZ':[],
                 'RX':[],'RY':[],'RZ':[]}
@@ -342,20 +395,7 @@ class DataExtractor:
     
 
     def get_point_reactions(self,point_names=None,cases_and_combos=None):
-        """
-        Extrae reacciones en puntos
-        
-        Parameters:
-        -----------
-        point_name : str, optional
-            Nombre del punto. Si None, extrae todos.
-        cases_and_combos : list, optional
-            Lista de casos/combos. Si None, usa todos.
-        
-        Returns:
-        --------
-        DataFrame con F1, F2, F3, M1, M2, M3 para cada punto
-        """
+        """Extrae reacciones nodales para los puntos solicitados."""
         point_names = format_list_args(point_names,self.point_list)
         cases_and_combos = format_list_args(cases_and_combos,
                             self.design_cases_and_combos)
@@ -405,7 +445,11 @@ class DataExtractor:
         return list(self.model.PropFrame.GetNameList()[1])
     
     def get_frame_section_properties(self, section_name):
-        """Obtiene propiedades de una sección"""
+        """
+        Obtiene propiedades seccionales de un frame.
+
+        Retorna un diccionario con área, inercia, torsión y módulos resistentes.
+        """
         result = self.model.PropFrame.GetSectProps(section_name)
         return {
             'SectionName': section_name,
@@ -424,7 +468,11 @@ class DataExtractor:
         }
     
     def get_frame_section_dimensions(self, get_properties=False):
-        """Dimensiones de las secciones"""
+        """
+        Extrae dimensiones geométricas de las secciones de frame.
+
+        Si ``get_properties`` es verdadero, agrega propiedades seccionales calculadas.
+        """
         
         columns = ['SectionName', 'PropType', 't3', 't2', 'tf', 'tw', 't2b', 'tfb', 'Area']
         data = self.model.PropFrame.GetAllFrameProperties_2()[1:-1]
@@ -454,20 +502,20 @@ class DataExtractor:
         return self._frame_list
     
     def get_frame_section(self, frame_name):
-        """Obtiene sección asignada a un frame"""
+        """Obtiene la sección asignada a un frame."""
         if isinstance(frame_name,int):
             frame_name = str(frame_name)
         return self.model.FrameObj.GetSection(frame_name)[0]
     
     def get_frame_points(self, frame_name):
-        """Obtiene puntos inicial y final de un frame"""
+        """Obtiene los puntos inicial y final de un frame."""
         if isinstance(frame_name,int):
             frame_name = str(frame_name)
         result = self.model.FrameObj.GetPoints(frame_name)
         return {'point_i': result[0], 'point_j': result[1]}
     
     def get_frame_coordinates(self,frame_name):
-        """Obtiene coordenadas de los puntos inicial y final"""
+        """Obtiene las coordenadas de los extremos de un frame."""
         if isinstance(frame_name,int):
             frame_name = str(frame_name)
         points = self.get_frame_points(frame_name)
@@ -477,7 +525,7 @@ class DataExtractor:
         return {'coord_i': coord_i, 'coord_j': coord_j}
     
     def get_frame_length(self, frame_name):
-        """Obtiene longitud del frame"""
+        """Calcula la longitud geométrica de un frame."""
         if isinstance(frame_name,int):
             frame_name = str(frame_name)
         coords = self.get_frame_coordinates(frame_name)
@@ -514,20 +562,7 @@ class DataExtractor:
         
     
     def get_frame_forces(self,frame_name=None,cases_and_combos=None):
-        """
-        Extrae fuerzas en frames usando API nativa
-        
-        Parameters:
-        -----------
-        frame_name : str, optional
-            Nombre del frame. Si None, extrae todos.
-        cases_and_combos : list, optional
-            Lista de casos/combos. Si None, usa todos.
-        
-        Returns:
-        --------
-        DataFrame con P, V2, V3, T, M2, M3 para cada frame
-        """
+        """Extrae fuerzas internas de frames usando la API nativa."""
         frames = format_list_args(frame_name,self.frame_list)
         cases_and_combos = format_list_args(cases_and_combos,
                             self.design_cases_and_combos)
@@ -664,6 +699,11 @@ class DataExtractor:
         
     
     def map_area_properties(self):
+        """
+        Clasifica y cachea las propiedades de áreas en muros, losas y decks.
+
+        Usa la API de propiedades de área para poblar los DataFrames auxiliares.
+        """
         sections = self.area_section_list
         walls = {'wall':[],'wallPropType':[],'ShellType':[],
                  'MatProp':[],'Thickness':[],'AutoSelectList':[],'StartingProperty':[]}
@@ -698,17 +738,21 @@ class DataExtractor:
         return list(self.model.PropArea.GetNameList()[1])
     
     def get_area_section(self, area_name):
-        """Obtiene sección asignada a un área"""
+        """Obtiene la sección asignada a un área."""
         return self.model.AreaObj.GetProperty(area_name)[0]
     
     def get_area_points(self, area_name):
-        """Obtiene puntos que definen un área"""
+        """Obtiene los puntos que definen un área."""
         result = self.model.AreaObj.GetPoints(area_name)
         return list(result[1])
     
     @property
     def area_geometry(self): 
-        """Propiedades de los objetos area """ 
+        """
+        Retorna la geometría básica de los objetos de área.
+
+        Incluye tipo, sección y coordenadas de sus puntos de contorno.
+        """
         if self._area_geometry is None:
             data = self.model.AreaObj.GetAllAreas() 
             area_name = data[1] 
@@ -737,20 +781,7 @@ class DataExtractor:
         return self._area_geometry              
     
     def get_area_forces(self, area_name=None, cases_and_combos=None):
-        """
-        Extrae fuerzas en áreas (losas)
-        
-        Parameters:
-        -----------
-        area_name : str, optional
-            Nombre del área. Si None, extrae todas.
-        cases_and_combos : list, optional
-            Lista de casos/combos. Si None, usa todos.
-        
-        Returns:
-        --------
-        DataFrame con F11, F22, F12, M11, M22, M12, V13, V23 para cada área
-        """
+        """Extrae fuerzas internas en áreas."""
         areas = format_list_args(area_name,self.area_list)
         cases_and_combos = format_list_args(cases_and_combos,
                             self.handler.design_cases_and_combos)
@@ -824,9 +855,57 @@ class DataExtractor:
     def floor_list(self):
         """Obtiene la lista de elementos piso"""
         properties = self.area_geometry
-        print(properties)
         return list(properties[properties['area_type']=='floor']['name'])
     
+    # =================== STRIPS ====================
+    
+    @property
+    def strip_list(self):
+        if self._strips is not None:
+            return self._strips
+        d_case = self.design_cases[0]
+        self.model.DatabaseTables.SetLoadCasesSelectedForDisplay([d_case])
+        strip_forces = self.get_table('Strip Forces')
+        if strip_forces.empty:
+            return []
+        if 'StripObject' in strip_forces.columns:
+            strips = strip_forces['StripObject'].unique()
+        else:
+            strips = strip_forces['Strip'].unique()
+        self._strips = list(strips)
+        return self._strips
+    
+    def extract_strip_loads(self,strips=None,cases_and_combos=None):
+        """
+        Extrae fuerzas de strips desde la tabla ``Strip Forces``.
+
+        Puede filtrar por nombre de strip y por casos o combinaciones.
+        """
+        if cases_and_combos ==None:
+            cases_and_combos = self.design_cases_and_combos
+            
+        self.model.DatabaseTables.SetLoadCasesSelectedForDisplay(cases_and_combos)
+        self.model.DatabaseTables.SetLoadCombinationsSelectedForDisplay(cases_and_combos)
+        
+        df = self.get_table('Strip Forces')
+        
+        if 'Strip' in df.columns:
+            df.rename(columns={'Strip':'StripObject'})
+            
+            
+        if strips is not None:
+            strips = format_list_args(strips,self.strip_list)
+            df = df[df['StripObject'].isin(strips)]
+            
+        df[['V2','M3','Station']] =\
+            df[['V2','M3','Station']].astype('float')
+        
+        return df.reset_index(drop=True)
+    
+    
+    @property
+    def strip_loads(self):
+        return self.extract_strip_loads()
     
     
     # ==================== WALLS ====================
@@ -846,7 +925,12 @@ class DataExtractor:
     def pier_list(self):
         return list(self.model.PierLabel.GetNameList()[1])
     
-    def get_pier_forces(self,piers=None,cases_and_combos=None):
+    def get_pier_forces(self,piers=None,stories=None,cases_and_combos=None):
+        """
+        Extrae fuerzas globales reportadas para piers.
+
+        Permite filtrar por pier, nivel y casos o combinaciones de salida.
+        """
         cases_and_combos = format_list_args(cases_and_combos,
                             self.design_cases_and_combos)
         self.model.Results.Setup.DeselectAllCasesAndCombosForOutput()
@@ -875,27 +959,91 @@ class DataExtractor:
         df['M3'].extend(data[10])
    
         df = pd.DataFrame(df)
-   
-        if piers is None:
-            return df
-        piers = format_list_args(piers,self.pier_list)
+
+        # Etiquetar max/min en casos sísmicos (2 filas por grupo)
+        group_cols = ['Pier', 'Story', 'OutputCase', 'Location']
+        suffixes = df.groupby(group_cols).cumcount()
+        mask_dup = df.duplicated(subset=group_cols, keep=False)
+        suffix_map = {0: ' max', 1: ' min'}
+        df.loc[mask_dup, 'OutputCase'] = (
+            df.loc[mask_dup, 'OutputCase'] + suffixes[mask_dup].map(suffix_map)
+        )
+
+        if piers is not None:
+            piers = format_list_args(piers,self.pier_list)
+            df = df[df['Pier'].isin(piers)]
+        if stories is not None:
+            stories = format_list_args(stories,self.stories)
+            df = df[df['Story'].isin(stories)]
         
-        return df[df['Pier'].isin(piers)]
+        return df.reset_index(drop=True)
         
     @property
     def pier_forces(self):
         return self.get_pier_forces()
-   
+    
+    def get_pier_displacements(self,piers=None,cases_and_combos=None):
+        """
+        Estima desplazamientos de piers usando etiquetas, bays y desplazamientos nodales.
 
+        La dirección principal del pier se deduce de sus propiedades de sección.
+        """
+        cases_and_combos = format_list_args(cases_and_combos,
+                            self.design_cases_and_combos)
+        # Trabajo con tablas
+        self.model.DatabaseTables.SetLoadCasesSelectedForDisplay(cases_and_combos)
+        self.model.DatabaseTables.SetLoadCombinationsSelectedForDisplay(cases_and_combos)
+        data = self.get_table('Area Assignments - Pier Labels')
+        
+        # Filtro con el máximo piso del Pier
+        idx_story = list(data.groupby('PierName')['Story'].idxmax()) 
+        data = data.loc[idx_story]
+        data = data[['Story','PierName','Label']]
+        # Puntos de los muros
+        wall_points = self.get_table('Wall Bays')
+        wall_points = wall_points[['Label','PointBay']]
+        data = data.merge(wall_points)
+        
+        # Desplazamiento de los puntos
+        p_disp = self.get_table('Joint Displacements')
+        p_disp = p_disp[['Story','OutputCase','Label','Ux','Uy']]
+        data = data.merge(p_disp, left_on=['Story','PointBay'], right_on=['Story','Label'])
+        data = data.drop(columns = ['Label_x','PointBay','Label_y'])
+        data = data.rename(columns={'PierName':'Pier'})
+        
+        # Dirección de los piers
+        direc = self.get_table('Pier Section Properties')
+        idx_ = list(direc.groupby('Pier')['Story'].idxmin())
+        direc = direc.loc[idx_]
+        direc = direc[['Pier','AxisAngle']]
+        direc['Dir'] = np.where(direc['AxisAngle']=='0','X','Y')
+        direc = direc.drop(columns='AxisAngle')
+        data = data.merge(direc, on ='Pier')
+        
+        data[['Ux','Uy']] = data[['Ux','Uy']].astype(float)
+        data['delta'] = np.where(data['Dir']=='X',data['Ux'],data['Uy'])
+        
+        data = data.groupby(['Story','Pier','Dir','OutputCase']).max().reset_index()
+        if piers is not None:
+            piers = format_list_args(piers,self.pier_list)
+            data = data[data['Pier'].isin(piers)]
+        
+        return data.reset_index(drop=True)
+        
     # ==================== STORIES ====================   
     @property
     def stories(self):
-        return self.model.Story.GeStories()[1]
+        return self.model.Story.GetStories()[1]
     
     def get_story_height(self,story):
         return self.model.Story.GetHeight(story)[0]
     
     def get_story_forces(self,cases_and_combos=None):
+        """
+        Extrae fuerzas globales por nivel desde la tabla ``Story Forces``.
+
+        El resultado agrega la altura de cada nivel y limpia columnas auxiliares.
+        """
         cases_and_combos = format_list_args(cases_and_combos,
                             self.design_cases_and_combos)
         
@@ -919,6 +1067,11 @@ class DataExtractor:
         return self.get_story_forces()
     
     def get_story_displacements(self,cases_and_combos=None):
+        """
+        Extrae desplazamientos globales por nivel desde tablas de resultados.
+
+        Puede limitarse al conjunto de casos y combinaciones indicado.
+        """
         cases_and_combos = format_list_args(cases_and_combos,
                             self.seismic_cases_and_combos)
         self.model.DatabaseTables.\
@@ -940,6 +1093,11 @@ class DataExtractor:
         return self.get_story_displacements()
     
     def get_story_drifts(self,cases_and_combos=None):
+        """
+        Extrae derivas máximas por diafragma y nivel.
+
+        Incluye la altura de piso y elimina columnas auxiliares no esenciales.
+        """
         cases_and_combos = format_list_args(cases_and_combos,
                             self.seismic_cases_and_combos)
         self.model.DatabaseTables.\
@@ -960,9 +1118,49 @@ class DataExtractor:
     @property
     def story_drifts(self):
         return self.get_story_drifts()
+    
+    # ================ Presiones del Suelo ======================
+    
+    def extract_soil_pressures(self,cases_and_combos=None):
+        """
+        Extrae presiones de suelo ordenadas por los casos o combinaciones dados.
 
-    # Analisis modal
+        Normaliza columnas clave y consolida el tipo de paso cuando existe.
+        """
+        if cases_and_combos == None:
+            cases_and_combos = self.cases_and_combos
+            
+        self.model.DatabaseTables.SetLoadCasesSelectedForDisplay(cases_and_combos)
+        self.model.DatabaseTables.SetLoadCombinationsSelectedForDisplay(cases_and_combos)
+        
+        soil_pressures = self.get_table('Soil Pressures')
+        soil_pressures['_index'] = soil_pressures.index
+        soil_pressures = soil_pressures.sort_values(
+                by=['OutputCase', '_index'],
+                key=lambda col: col.map({nombre: i for i, nombre in enumerate(cases_and_combos)}) if col.name == 'OutputCase' else col
+            ).reset_index(drop=True)
+        soil_pressures = soil_pressures.drop(columns='_index')
+        if 'StepType' in soil_pressures.columns:
+            soil_pressures['OutputCase'] = soil_pressures['OutputCase'].astype(str)+' '+soil_pressures['StepType']
+        soil_pressures = soil_pressures[['UniqueName','OutputCase','SoilPressure','GlobalX','GlobalY']]
+        soil_pressures[['SoilPressure','GlobalX','GlobalY']] =\
+            soil_pressures[['SoilPressure','GlobalX','GlobalY']].astype(float)
+        
+        return soil_pressures
+    
+    @property
+    def soil_pressures(self):
+        return self.extract_soil_pressures()
+    
+    
+
+    # ================= Analisis modal =========================
     def get_modal_data(self,cases=None):
+        """
+        Extrae períodos y razones de masa participante de casos modales.
+
+        Los datos se cachean tras la primera lectura y pueden filtrarse por caso.
+        """
         if self._modal_data is None:
             cases_and_combos = self.cases_and_combos
             self.model.Results.Setup.DeselectAllCasesAndCombosForOutput()
@@ -1001,4 +1199,783 @@ class DataExtractor:
             df = self.modal_data
             self._modal_cases = list(df['LoadCase'].unique())
         return self._modal_cases
-  
+
+    def get_modal_periods(self, case_name=None, num_modes=None, as_dict=False):
+        """
+        Obtiene los períodos modales de un caso modal.
+
+        Puede limitar el número de modos y devolver lista o diccionario.
+        """
+        # Obtener datos modales completos
+        modal_data = self.get_modal_data(cases=case_name)
+
+        if modal_data.empty:
+            raise ValueError("No hay datos modales disponibles en el modelo")
+
+        # Si no se especifica caso, usar el primero disponible
+        if case_name is None:
+            case_name = modal_data['LoadCase'].iloc[0]
+            print(f"Usando caso modal: {case_name}")
+
+        # Filtrar por caso específico
+        case_data = modal_data[modal_data['LoadCase'] == case_name].copy()
+
+        if case_data.empty:
+            available_cases = list(modal_data['LoadCase'].unique())
+            raise ValueError(
+                f"El caso '{case_name}' no tiene datos modales. "
+                f"Casos disponibles: {available_cases}"
+            )
+
+        # Convertir períodos a float
+        case_data['Period'] = case_data['Period'].astype(float)
+
+        # Ordenar por período (mayor a menor = modo 1, 2, 3...)
+        case_data = case_data.sort_values('Period', ascending=False).reset_index(drop=True)
+
+        # Limitar número de modos si se especifica
+        if num_modes is not None:
+            case_data = case_data.head(num_modes)
+
+        # Retornar según formato solicitado
+        if as_dict:
+            # Diccionario {modo: periodo}
+            return {i+1: period for i, period in enumerate(case_data['Period'])}
+        else:
+            # Lista de períodos
+            return list(case_data['Period'])
+
+    def get_modal_summary(self, case_name=None, num_modes=None):
+        """
+        Resume períodos y participaciones modales de un caso.
+
+        Retorna un DataFrame ordenado por período con numeración de modo.
+        """
+        # Obtener datos modales completos
+        modal_data = self.get_modal_data(cases=case_name)
+
+        if modal_data.empty:
+            raise ValueError("No hay datos modales disponibles en el modelo")
+
+        # Si no se especifica caso, usar el primero disponible
+        if case_name is None:
+            case_name = modal_data['LoadCase'].iloc[0]
+            print(f"Usando caso modal: {case_name}")
+
+        # Filtrar por caso específico
+        case_data = modal_data[modal_data['LoadCase'] == case_name].copy()
+
+        if case_data.empty:
+            available_cases = list(modal_data['LoadCase'].unique())
+            raise ValueError(
+                f"El caso '{case_name}' no tiene datos modales. "
+                f"Casos disponibles: {available_cases}"
+            )
+
+        # Convertir columnas numéricas
+        numeric_cols = ['Period', 'UX', 'UY', 'UZ', 'SumUX', 'SumUY', 'RZ', 'SumRZ']
+        for col in numeric_cols:
+            case_data[col] = case_data[col].astype(float)
+
+        # Ordenar por período (mayor a menor)
+        case_data = case_data.sort_values('Period', ascending=False).reset_index(drop=True)
+
+        # Añadir columna de número de modo
+        case_data.insert(0, 'Mode', range(1, len(case_data) + 1))
+
+        # Limitar número de modos si se especifica
+        if num_modes is not None:
+            case_data = case_data.head(num_modes)
+
+        # Seleccionar columnas relevantes
+        summary = case_data[['Mode', 'Period', 'UX', 'UY', 'UZ',
+                            'SumUX', 'SumUY', 'RZ', 'SumRZ']]
+
+        return summary
+
+    def get_modal_displacements(self, case_name=None, point_names=None,
+                               mode_number=None, item_type=0):
+        """
+        Obtiene desplazamientos modales para puntos y modos seleccionados.
+
+        El resultado incluye traslaciones y rotaciones por punto y modo.
+        """
+        # Obtener casos modales disponibles
+        modal_cases_list = self.modal_cases
+
+        if not modal_cases_list:
+            raise ValueError("No hay casos modales disponibles en el modelo")
+
+        # Si no se especifica caso, usar el primero disponible
+        if case_name is None:
+            case_name = modal_cases_list[0]
+            print(f"Usando caso modal: {case_name}")
+        elif case_name not in modal_cases_list:
+            raise ValueError(
+                f"El caso '{case_name}' no es un caso modal. "
+                f"Casos modales disponibles: {modal_cases_list}"
+            )
+
+        # Determinar puntos a extraer
+        if point_names is None:
+            point_names = self.point_list
+        else:
+            point_names = format_list_args(point_names, self.point_list)
+
+        # Estructura de datos para almacenar resultados
+        data = {
+            'Point': [],
+            'LoadCase': [],
+            'StepType': [],
+            'StepNum': [],
+            'U1': [],
+            'U2': [],
+            'U3': [],
+            'R1': [],
+            'R2': [],
+            'R3': []
+        }
+
+        # Configurar salida para el caso específico
+        self.model.Results.Setup.DeselectAllCasesAndCombosForOutput()
+        self.model.Results.Setup.SetCaseSelectedForOutput(case_name)
+
+        # Extraer desplazamientos para cada punto
+        for point in point_names:
+            res = self.model.Results.JointDispl(point, item_type)
+
+            # Verificar si hay resultados
+            if res[-1] != 0:
+                # Intentar correr análisis si no hay resultados
+                self.model.Analyze.RunAnalysis()
+                res = self.model.Results.JointDispl(point, item_type)
+
+                if res[-1] != 0:
+                    continue
+
+            # Extraer datos
+            num_results = res[0]
+            if num_results == 0:
+                continue
+
+            # res[1] = Point names
+            # res[3] = Load case names
+            # res[4] = Step types
+            # res[5] = Step numbers
+            # res[6-11] = U1, U2, U3, R1, R2, R3
+
+            data['Point'].extend(res[1])
+            data['LoadCase'].extend(res[3])
+            data['StepType'].extend(res[4])
+            data['StepNum'].extend(res[5])
+            data['U1'].extend(res[6])
+            data['U2'].extend(res[7])
+            data['U3'].extend(res[8])
+            data['R1'].extend(res[9])
+            data['R2'].extend(res[10])
+            data['R3'].extend(res[11])
+
+        # Crear DataFrame
+        df = pd.DataFrame(data)
+
+        if df.empty:
+            raise ValueError(
+                f"No se encontraron desplazamientos modales para el caso '{case_name}'"
+            )
+
+        # Filtrar por caso específico (por si acaso hay otros casos en los resultados)
+        df = df[df['LoadCase'] == case_name].copy()
+
+        # Convertir columnas numéricas
+        numeric_cols = ['StepNum', 'U1', 'U2', 'U3', 'R1', 'R2', 'R3']
+        for col in numeric_cols:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+
+        # Filtrar por modos específicos si se solicita
+        if mode_number is not None:
+            if isinstance(mode_number, int):
+                mode_number = [mode_number]
+            df = df[df['StepNum'].isin(mode_number)]
+
+            if df.empty:
+                raise ValueError(
+                    f"No se encontraron datos para el/los modo(s) {mode_number}"
+                )
+
+        # Ordenar por punto y modo
+        df = df.sort_values(['Point', 'StepNum']).reset_index(drop=True)
+
+        return df
+
+    def get_modal_shape(self, case_name=None, mode_number=1,
+                       direction='3D', normalize=True):
+        """
+        Obtiene la forma modal de un modo para visualización.
+
+        Puede calcular magnitud 3D, horizontal o una componente específica.
+        """
+        # Obtener desplazamientos del modo específico
+        modal_displ = self.get_modal_displacements(case_name=case_name,
+                                                   mode_number=mode_number)
+
+        # Obtener coordenadas de los puntos
+        coords = self.points_coordinates
+
+        # Merge con coordenadas
+        shape = modal_displ.merge(coords, on='Point', how='left')
+
+        # Calcular desplazamiento según dirección solicitada
+        if direction == '3D':
+            shape['Displacement'] = np.sqrt(
+                shape['U1']**2 + shape['U2']**2 + shape['U3']**2
+            )
+        elif direction == 'horizontal':
+            shape['Displacement'] = np.sqrt(
+                shape['U1']**2 + shape['U2']**2
+            )
+        elif direction in ['U1', 'U2', 'U3']:
+            shape['Displacement'] = shape[direction]
+        else:
+            raise ValueError(
+                f"Dirección '{direction}' no válida. "
+                f"Opciones: '3D', 'horizontal', 'U1', 'U2', 'U3'"
+            )
+
+        # Normalizar si se solicita
+        if normalize:
+            max_disp = shape['Displacement'].abs().max()
+            if max_disp > 0:
+                shape['Displacement'] = shape['Displacement'] / max_disp
+
+        # Seleccionar columnas relevantes
+        result = shape[['Point', 'X', 'Y', 'Z', 'Displacement',
+                       'U1', 'U2', 'U3', 'R1', 'R2', 'R3']]
+
+        return result
+
+    # ==================== GEOMETRY EXTRACTION ====================
+
+    def get_model_geometry(self, include_frames=True, include_areas=True,
+                          include_points=True, include_sections=True):
+        """
+        Extrae la geometría principal del modelo.
+
+        Puede incluir puntos, frames, áreas, secciones y límites globales.
+        """
+        geometry = {}
+
+        # 1. Extraer puntos
+        if include_points:
+            print("Extrayendo puntos...")
+            geometry['points'] = self.points_coordinates.copy()
+
+            # Calcular límites del modelo
+            coords = geometry['points']
+            geometry['bounds'] = {
+                'xmin': coords['X'].min(),
+                'xmax': coords['X'].max(),
+                'ymin': coords['Y'].min(),
+                'ymax': coords['Y'].max(),
+                'zmin': coords['Z'].min(),
+                'zmax': coords['Z'].max()
+            }
+            print(f"  Total puntos: {len(geometry['points'])}")
+        else:
+            geometry['points'] = None
+            geometry['bounds'] = None
+
+        # 2. Extraer frames
+        if include_frames:
+            print("Extrayendo frames...")
+            geometry['frames'] = self.frames_properties.copy()
+            print(f"  Total frames: {len(geometry['frames'])}")
+
+            # Añadir información de conectividad
+            if include_points and geometry['points'] is not None:
+                # Coordenadas de puntos inicial y final
+                frames_df = geometry['frames']
+                points_df = geometry['points']
+
+                # Merge para punto inicial
+                frames_df = frames_df.merge(
+                    points_df.rename(columns={'X': 'Xi', 'Y': 'Yi', 'Z': 'Zi'}),
+                    left_on='point_i', right_on='Point', how='left'
+                ).drop('Point', axis=1)
+
+                # Merge para punto final
+                frames_df = frames_df.merge(
+                    points_df.rename(columns={'X': 'Xj', 'Y': 'Yj', 'Z': 'Zj'}),
+                    left_on='point_j', right_on='Point', how='left'
+                ).drop('Point', axis=1)
+
+                geometry['frames'] = frames_df
+        else:
+            geometry['frames'] = None
+
+        # 3. Extraer áreas
+        if include_areas:
+            print("Extrayendo áreas...")
+            geometry['areas'] = self.area_geometry.copy()
+            print(f"  Total áreas: {len(geometry['areas'])}")
+        else:
+            geometry['areas'] = None
+
+        # 4. Extraer secciones
+        if include_sections:
+            print("Extrayendo secciones...")
+
+            if include_frames:
+                geometry['frame_sections'] = self.frame_sections_data.copy()
+                print(f"  Total secciones de frame: {len(geometry['frame_sections'])}")
+            else:
+                geometry['frame_sections'] = None
+
+            if include_areas:
+                # Asegurar que las propiedades de área estén mapeadas
+                if self._wall_sections_data is None:
+                    self.map_area_properties()
+
+                geometry['area_sections'] = {
+                    'walls': self._wall_sections_data.copy() if self._wall_sections_data is not None else pd.DataFrame(),
+                    'slabs': self._slab_sections_data.copy() if self._slab_sections_data is not None else pd.DataFrame(),
+                    'decks': self._deck_sections_data.copy() if self._deck_sections_data is not None else pd.DataFrame()
+                }
+                total_area_sections = (
+                    len(geometry['area_sections']['walls']) +
+                    len(geometry['area_sections']['slabs']) +
+                    len(geometry['area_sections']['decks'])
+                )
+                print(f"  Total secciones de área: {total_area_sections}")
+            else:
+                geometry['area_sections'] = None
+        else:
+            geometry['frame_sections'] = None
+            geometry['area_sections'] = None
+
+        # Resumen
+        print("\nResumen de geometría extraída:")
+        print(f"  Puntos: {len(geometry['points']) if geometry['points'] is not None else 'No incluidos'}")
+        print(f"  Frames: {len(geometry['frames']) if geometry['frames'] is not None else 'No incluidos'}")
+        print(f"  Áreas: {len(geometry['areas']) if geometry['areas'] is not None else 'No incluidos'}")
+
+        return geometry
+
+    def get_geometry_summary(self):
+        """
+        Resume la geometría del modelo en métricas básicas.
+
+        Incluye conteos, dimensiones globales, secciones y materiales.
+        """
+        summary = {}
+
+        # Estadísticas de puntos
+        points = self.points_coordinates
+        summary['num_points'] = len(points)
+        summary['height'] = points['Z'].max() - points['Z'].min()
+        summary['x_dimension'] = points['X'].max() - points['X'].min()
+        summary['y_dimension'] = points['Y'].max() - points['Y'].min()
+
+        # Estadísticas de frames
+        frames = self.frames_properties
+        summary['num_frames'] = len(frames)
+        summary['total_frame_length'] = frames['length'].sum()
+
+        # Contar por tipo de frame (basado en Label)
+        if 'Label' in frames.columns:
+            label_counts = frames['Label'].value_counts().to_dict()
+            summary['frames_by_label'] = label_counts
+
+        # Estadísticas de áreas
+        areas = self.area_geometry
+        summary['num_areas'] = len(areas)
+
+        # Contar por tipo de área
+        area_type_counts = areas['area_type'].value_counts().to_dict()
+        summary['areas_by_type'] = area_type_counts
+
+        # Estadísticas de secciones
+        frame_sections = self.frame_sections_data
+        summary['num_frame_sections'] = len(frame_sections)
+
+        # Contar por tipo de sección
+        if 'SectionType' in frame_sections.columns:
+            section_counts = frame_sections['SectionType'].value_counts().to_dict()
+            summary['frame_sections_by_type'] = section_counts
+
+        # Pisos/Niveles
+        if 'Story' in frames.columns:
+            stories = frames['Story'].unique()
+            summary['num_stories'] = len(stories)
+            summary['stories'] = list(stories)
+
+        # Materiales
+        materials = self.material_list
+        summary['num_materials'] = len(materials)
+        summary['materials'] = materials
+
+        return summary
+
+    def export_geometry_to_dict(self, simplified=False):
+        """
+        Exporta la geometría del modelo a un diccionario serializable.
+
+        Puede generar una versión resumida o una exportación más completa.
+        """
+        if simplified:
+            # Versión simplificada: solo puntos y conectividad básica
+            points = self.points_coordinates
+            frames = self.frames_properties[['Frame', 'point_i', 'point_j', 'Section', 'Label']]
+            areas = self.area_geometry[['name', 'area_type', 'section']]
+
+            geometry = {
+                'points': points.to_dict(orient='records'),
+                'frames': frames.to_dict(orient='records'),
+                'areas': areas.to_dict(orient='records'),
+                'summary': self.get_geometry_summary()
+            }
+        else:
+            # Versión completa
+            full_geometry = self.get_model_geometry()
+
+            geometry = {
+                'points': full_geometry['points'].to_dict(orient='records') if full_geometry['points'] is not None else [],
+                'frames': full_geometry['frames'].to_dict(orient='records') if full_geometry['frames'] is not None else [],
+                'areas': [],
+                'frame_sections': full_geometry['frame_sections'].to_dict(orient='records') if full_geometry['frame_sections'] is not None else [],
+                'bounds': full_geometry['bounds'],
+                'summary': self.get_geometry_summary()
+            }
+
+            # Convertir áreas (manejo especial de listas en columnas)
+            if full_geometry['areas'] is not None:
+                areas_df = full_geometry['areas'].copy()
+                # Convertir listas a strings para serialización
+                for col in ['points_x', 'points_y', 'points_z']:
+                    if col in areas_df.columns:
+                        areas_df[col] = areas_df[col].apply(lambda x: list(x) if isinstance(x, (list, tuple)) else x)
+                geometry['areas'] = areas_df.to_dict(orient='records')
+
+            # Secciones de área
+            if full_geometry['area_sections'] is not None:
+                geometry['area_sections'] = {
+                    'walls': full_geometry['area_sections']['walls'].to_dict(orient='records'),
+                    'slabs': full_geometry['area_sections']['slabs'].to_dict(orient='records'),
+                    'decks': full_geometry['area_sections']['decks'].to_dict(orient='records')
+                }
+
+        return geometry
+
+    # ==================== LOAD CASES EXTRACTION ====================
+
+    def get_load_cases_info(self, include_cases=True, include_combos=True,
+                           include_patterns=True, include_details=True):
+        """
+        Extrae información de patrones, casos y combinaciones de carga.
+
+        Opcionalmente agrega detalles internos y un resumen estadístico.
+        """
+        load_info = {}
+
+        # 1. Patrones de carga
+        if include_patterns:
+            print("Extrayendo patrones de carga...")
+            patterns_data = {
+                'Pattern': [],
+                'Type': [],
+                'TypeName': [],
+                'SelfWtMultiplier': []
+            }
+
+            # Obtener lista de patrones
+            num_patterns = self.model.LoadPatterns.GetNameList()[0]
+            pattern_names = self.model.LoadPatterns.GetNameList()[1]
+
+            # Mapeo de tipos de patrones
+            pattern_type_map = {
+                1: 'Dead',
+                2: 'Super Dead',
+                3: 'Live',
+                4: 'Reducible Live',
+                5: 'Quake',
+                6: 'Wind',
+                7: 'Snow',
+                8: 'Other',
+                9: 'Move',
+                10: 'Temperature',
+                11: 'Roof Live',
+                12: 'Notional',
+                13: 'Pattern Live',
+                14: 'Wave',
+                15: 'Bridge',
+                16: 'Vehicle'
+            }
+
+            for pattern in pattern_names:
+                pattern_type = self.model.LoadPatterns.GetLoadType(pattern)[0]
+                self_wt = self.model.LoadPatterns.GetSelfWTMultiplier(pattern)[0]
+
+                patterns_data['Pattern'].append(pattern)
+                patterns_data['Type'].append(pattern_type)
+                patterns_data['TypeName'].append(pattern_type_map.get(pattern_type, 'Unknown'))
+                patterns_data['SelfWtMultiplier'].append(self_wt)
+
+            load_info['load_patterns'] = pd.DataFrame(patterns_data)
+            print(f"  Total patrones: {len(load_info['load_patterns'])}")
+        else:
+            load_info['load_patterns'] = None
+
+        # 2. Casos de carga
+        if include_cases:
+            print("Extrayendo casos de carga...")
+            cases_data = {
+                'Case': [],
+                'Type': [],
+                'TypeName': []
+            }
+
+            # Mapeo de tipos de casos
+            case_type_map = {
+                1: 'Linear Static',
+                2: 'Nonlinear Static',
+                3: 'Modal',
+                4: 'Response Spectrum',
+                5: 'Linear History',
+                6: 'Nonlinear History',
+                7: 'Moving Load',
+                8: 'Buckling',
+                9: 'Steady State',
+                10: 'Power Spectral Density',
+                11: 'Linear Static Multistep',
+                12: 'Hyperstatic',
+                13: 'Direct Integration Time History',
+                14: 'Staged Construction'
+            }
+
+            for case in self.cases:
+                case_type = self.model.LoadCases.GetTypeOAPI_1(case)[2]
+
+                cases_data['Case'].append(case)
+                cases_data['Type'].append(case_type)
+                cases_data['TypeName'].append(case_type_map.get(case_type, 'Unknown'))
+
+            load_info['load_cases'] = pd.DataFrame(cases_data)
+
+            # Agregar información de casos modales
+            if include_details:
+                modal_cases = self.modal_cases if hasattr(self, 'modal_cases') else []
+                load_info['load_cases']['IsModal'] = load_info['load_cases']['Case'].isin(modal_cases)
+
+                seismic_cases = self.seismic_cases if hasattr(self, 'seismic_cases') else []
+                load_info['load_cases']['IsSeismic'] = load_info['load_cases']['Case'].isin(seismic_cases)
+
+            print(f"  Total casos: {len(load_info['load_cases'])}")
+        else:
+            load_info['load_cases'] = None
+
+        # 3. Combinaciones de carga
+        if include_combos:
+            print("Extrayendo combinaciones de carga...")
+            combos_data = {
+                'Combo': [],
+                'Type': [],
+                'TypeName': [],
+                'NumCases': []
+            }
+
+            # Mapeo de tipos de combinaciones
+            combo_type_map = {
+                0: 'Linear Add',
+                1: 'Envelope',
+                2: 'Absolute Add',
+                3: 'SRSS',
+                4: 'Range Add'
+            }
+
+            combo_details_list = []
+
+            for combo in self.combos:
+                combo_type = self.model.RespCombo.GetTypeOAPI(combo)[0]
+
+                # Obtener casos de la combinación
+                combo_info = self.model.RespCombo.GetCaseList(combo)
+                num_cases = combo_info[0]
+                case_types = combo_info[1]
+                case_names = combo_info[2]
+                scale_factors = combo_info[3]
+
+                combos_data['Combo'].append(combo)
+                combos_data['Type'].append(combo_type)
+                combos_data['TypeName'].append(combo_type_map.get(combo_type, 'Unknown'))
+                combos_data['NumCases'].append(num_cases)
+
+                # Detalles de cada caso en la combinación
+                if include_details:
+                    for i in range(num_cases):
+                        combo_details_list.append({
+                            'Combo': combo,
+                            'CaseType': 'LoadCase' if case_types[i] == 0 else 'LoadCombo',
+                            'CaseName': case_names[i],
+                            'ScaleFactor': scale_factors[i]
+                        })
+
+            load_info['load_combos'] = pd.DataFrame(combos_data)
+            print(f"  Total combinaciones: {len(load_info['load_combos'])}")
+
+            if include_details and combo_details_list:
+                load_info['combo_details'] = pd.DataFrame(combo_details_list)
+            else:
+                load_info['combo_details'] = None
+        else:
+            load_info['load_combos'] = None
+            load_info['combo_details'] = None
+
+        # 4. Resumen
+        summary = {}
+        if load_info['load_patterns'] is not None:
+            summary['num_patterns'] = len(load_info['load_patterns'])
+            summary['patterns_by_type'] = load_info['load_patterns']['TypeName'].value_counts().to_dict()
+
+        if load_info['load_cases'] is not None:
+            summary['num_cases'] = len(load_info['load_cases'])
+            summary['cases_by_type'] = load_info['load_cases']['TypeName'].value_counts().to_dict()
+
+        if load_info['load_combos'] is not None:
+            summary['num_combos'] = len(load_info['load_combos'])
+            summary['combos_by_type'] = load_info['load_combos']['TypeName'].value_counts().to_dict()
+
+        load_info['summary'] = summary
+
+        # Resumen en consola
+        print("\nResumen de casos de carga:")
+        if 'num_patterns' in summary:
+            print(f"  Patrones: {summary['num_patterns']}")
+        if 'num_cases' in summary:
+            print(f"  Casos: {summary['num_cases']}")
+        if 'num_combos' in summary:
+            print(f"  Combinaciones: {summary['num_combos']}")
+
+        return load_info
+
+    def get_load_cases_summary(self):
+        """
+        Resume los casos y combinaciones de carga del modelo.
+
+        Incluye conteos de patrones, casos, combinaciones y subconjuntos de diseño.
+        """
+        summary = {}
+
+        # Patrones
+        try:
+            num_patterns = self.model.LoadPatterns.GetNameList()[0]
+            summary['num_patterns'] = num_patterns
+        except:
+            summary['num_patterns'] = 0
+
+        # Casos
+        summary['num_cases'] = len(self.cases)
+        summary['num_design_cases'] = len(self.design_cases)
+        summary['num_seismic_cases'] = len(self.seismic_cases)
+        summary['num_modal_cases'] = len(self.modal_cases) if hasattr(self, 'modal_cases') else 0
+
+        # Combinaciones
+        summary['num_combos'] = len(self.combos)
+        summary['num_design_combos'] = len(self.design_cases_and_combos) - len(self.design_cases)
+        summary['num_seismic_combos'] = len(self.seismic_combos)
+
+        # Total casos y combos
+        summary['total_cases_and_combos'] = len(self.cases_and_combos)
+        summary['total_design_cases_and_combos'] = len(self.design_cases_and_combos)
+        summary['total_seismic_cases_and_combos'] = len(self.seismic_cases_and_combos)
+
+        return summary
+
+    def export_load_cases_to_dict(self, simplified=False):
+        """
+        Exporta la información de cargas a un diccionario serializable.
+
+        Puede generar una versión simplificada o una exportación detallada.
+        """
+        if simplified:
+            # Versión simplificada
+            load_dict = {
+                'cases': self.cases,
+                'combos': self.combos,
+                'design_cases': self.design_cases,
+                'seismic_cases': self.seismic_cases,
+                'modal_cases': self.modal_cases if hasattr(self, 'modal_cases') else [],
+                'summary': self.get_load_cases_summary()
+            }
+        else:
+            # Versión completa
+            full_info = self.get_load_cases_info()
+
+            load_dict = {
+                'load_patterns': full_info['load_patterns'].to_dict(orient='records') if full_info['load_patterns'] is not None else [],
+                'load_cases': full_info['load_cases'].to_dict(orient='records') if full_info['load_cases'] is not None else [],
+                'load_combos': full_info['load_combos'].to_dict(orient='records') if full_info['load_combos'] is not None else [],
+                'combo_details': full_info['combo_details'].to_dict(orient='records') if full_info['combo_details'] is not None else [],
+                'summary': full_info['summary']
+            }
+
+        return load_dict
+
+    def get_combo_breakdown(self, combo_name):
+        """
+        Desglosa recursivamente una combinación de carga.
+
+        El resultado acumula factores y consolida los casos base repetidos.
+        """
+        def get_combo_cases_recursive(combo, factor=1.0, level=0):
+            """Función recursiva para obtener todos los casos base"""
+            combo_info = self.model.RespCombo.GetCaseList(combo)
+            num_items = combo_info[0]
+            item_types = combo_info[1]  # 0 = LoadCase, 1 = LoadCombo
+            item_names = combo_info[2]
+            scale_factors = combo_info[3]
+
+            results = []
+
+            for i in range(num_items):
+                current_factor = factor * scale_factors[i]
+                item_type = 'Case' if item_types[i] == 0 else 'Combo'
+
+                if item_types[i] == 0:  # Es un caso de carga
+                    results.append({
+                        'Case': item_names[i],
+                        'Factor': current_factor,
+                        'Level': level,
+                        'Path': combo if level == 0 else f"{combo} > {item_names[i]}"
+                    })
+                else:  # Es otra combinación (recursivo)
+                    sub_results = get_combo_cases_recursive(
+                        item_names[i],
+                        current_factor,
+                        level + 1
+                    )
+                    results.extend(sub_results)
+
+            return results
+
+        # Verificar que la combinación existe
+        if combo_name not in self.combos:
+            raise ValueError(f"La combinación '{combo_name}' no existe")
+
+        # Obtener el desglose
+        breakdown_list = get_combo_cases_recursive(combo_name)
+
+        if not breakdown_list:
+            return pd.DataFrame(columns=['Case', 'Factor', 'Level', 'Path'])
+
+        df = pd.DataFrame(breakdown_list)
+
+        # Agrupar casos repetidos y sumar factores
+        df_grouped = df.groupby('Case').agg({
+            'Factor': 'sum',
+            'Level': 'min',
+            'Path': lambda x: ', '.join(set(x))
+        }).reset_index()
+
+        df_grouped = df_grouped.sort_values('Factor', ascending=False)
+
+        return df_grouped
+

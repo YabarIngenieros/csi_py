@@ -5,11 +5,7 @@ import pandas as pd
 
 # funciones auxiliares
 def is_ccw(points):
-    """
-    Verifica si los puntos 3D están en sentido antihorario (CCW)
-    usando solo las dos primeras coordenadas (x, y).
-    points: lista de [(x,y,z), ...] o [(x,y), ...]
-    """
+    """Verifica si una secuencia de puntos está en sentido antihorario."""
     area = 0.0
     n = len(points)
 
@@ -20,7 +16,11 @@ def is_ccw(points):
 
     return area < 0
 class ModelBuilder:
-    '''Mixin de modelamiento con API de ETABS'''  
+    """
+    Mixin con utilidades de modelamiento y edición tabular del modelo CSI.
+
+    Expone helpers para crear materiales, secciones, objetos y cargas.
+    """
     def __init__(self):
         super().__init__()
         self._section_definitions_table = None
@@ -28,6 +28,11 @@ class ModelBuilder:
         
     # Tables
     def apply_edited_table(self):
+        """
+        Aplica al modelo las tablas marcadas para edición.
+
+        Lanza una excepción si ETABS/SAP2000 reporta errores fatales o de edición.
+        """
         apply_result = self.model.DatabaseTables.ApplyEditedTables(True)
         num_fatal, num_errors, num_warnings, num_info = apply_result[1:5]
 
@@ -48,6 +53,11 @@ class ModelBuilder:
         return 0
     
     def get_editable_table(self,name,columns):
+        """
+        Obtiene una tabla editable existente o crea un DataFrame vacío con columnas dadas.
+
+        Retorna la versión de tabla y el DataFrame asociado.
+        """
         if name in self.available_tables['Table'].values:
             version,table = self.get_table(name,to_edit=True)
         else:
@@ -56,22 +66,7 @@ class ModelBuilder:
         return version,table
     
     def set_table(self, table_name, table:'pd.DataFrame', table_version=1, apply=True):
-        """
-        Modifica una tabla en ETABS
-
-        Parameters:
-        -----------
-        table_name : str
-            Nombre de la tabla a modificar
-        table : pd.DataFrame
-            DataFrame con los datos modificados
-        table_version : int
-            Versión de la tabla (obtenida de get_table con to_edit=True)
-
-        Returns:
-        --------
-        tuple: (flag, TableVersion, FieldsKeysIncluded, NumberRecords)
-        """
+        """Envía un DataFrame a una tabla editable del modelo."""
         columns = list(table.columns)
         data = table.values
         n_records = data.shape[0]
@@ -89,6 +84,11 @@ class ModelBuilder:
         
     # ================== GRIDS ================================
     def set_grid_sitem(self,X:list,Y:list,spacing=True):
+        """
+        Define el sistema de ejes cartesianos del modelo.
+
+        Si ``spacing`` es verdadero, interpreta ``X`` e ``Y`` como espaciamientos acumulables.
+        """
         table_name_1 = 'Grid Definitions - General'
         table_1:pd.DataFrame # hint
         version, table_1 = self.get_table(table_name_1,to_edit=True)
@@ -119,6 +119,11 @@ class ModelBuilder:
         
     # ===================== POINTS =============================
     def add_point(self,x,y,z):
+        """
+        Crea un punto cartesiano y retorna su nombre en el modelo.
+
+        Lanza una excepción si la API devuelve error al crear el punto.
+        """
         point = self.model.PointObj.AddCartesian(x,y,z)
         if point[-1]!=0:
             raise RuntimeError(f"Error ETABS al crear punto en ({x}, {y}, {z})")
@@ -127,32 +132,12 @@ class ModelBuilder:
     # ==================== LOAD COMBINATIONS ====================
     
     def add_load_combo(self, combo_name, combo_type=0):
-        """
-        Añade una combinación de carga
-        
-        Parameters:
-        -----------
-        combo_name : str
-            Nombre de la combinación
-        combo_type : int
-            Tipo (0=Linear Add, 1=Envelope, 2=Absolute Add, etc.)
-        """
+        """Añade una combinación de carga."""
         self.model.RespCombo.Add(combo_name, combo_type)
         print(f"Combinación de carga '{combo_name}' añadida")
     
     def set_combo_case(self, combo_name, case_name, scale_factor):
-        """
-        Añade un caso a una combinación con su factor
-        
-        Parameters:
-        -----------
-        combo_name : str
-            Nombre de la combinación
-        case_name : str
-            Nombre del caso
-        scale_factor : float
-            Factor de escala
-        """
+        """Asigna un caso o combo a una combinación con su factor."""
         self.model.RespCombo.SetCaseList(combo_name, 0, case_name, scale_factor)
         print(f"Caso '{case_name}' añadido a combo '{combo_name}' con factor {scale_factor}")
      
@@ -163,24 +148,7 @@ class ModelBuilder:
                      material_type:eMatType, 
                      E:float, U:float, A:float, 
                      mass_per_volume:float):
-        """
-        Añade un material al modelo
-        
-        Parameters:
-        -----------
-        material_name : str
-            Nombre del material
-        material_type : int
-            Tipo de material (1=Steel, 2=Concrete, 3=NoDesign, etc.)
-        E : float
-            Módulo de elasticidad
-        U : float
-            Relación de Poisson
-        A : float
-            Coeficiente de expansión térmica
-        weight_per_volume : float
-            Peso por unidad de volumen
-        """
+        """Añade un material isotrópico al modelo."""
         self.model.PropMaterial.SetMaterial(material_name, material_type)
         self.model.PropMaterial.SetMPIsotropic(material_name, E, U, A)
         self.model.PropMaterial.SetWeightAndMass(material_name, 2, mass_per_volume)
@@ -192,22 +160,7 @@ class ModelBuilder:
                           E: float, 
                           A: float,
                           mass_per_volume: float):
-        """
-        Añade un material uniaxial al modelo (para elementos tipo cable, tendón, etc.)
-        
-        Parameters:
-        -----------
-        material_name : str
-            Nombre del material
-        material_type : eMatType
-            Tipo de material (1=Steel, 2=Concrete, 3=NoDesign, etc.)
-        E : float
-            Módulo de elasticidad
-        A : float
-            Coeficiente de expansión térmica
-        mass_per_volume : float
-            Peso por unidad de volumen
-        """
+        """Añade un material uniaxial para cables, tendones u otros elementos similares."""
         self.model.PropMaterial.SetMaterial(material_name, material_type)
         self.model.PropMaterial.SetMPUniaxial(material_name, E, A)
         self.model.PropMaterial.SetWeightAndMass(material_name, 2, mass_per_volume)
@@ -216,6 +169,11 @@ class ModelBuilder:
     def add_concrete_material(self,name,fc=21*u.MPa,
                               E=None,U=0.15,A=0.0000099,
                               mass_per_volume=2400*u.kg/u.m**3):
+        """
+        Crea un material de concreto con propiedades isotrópicas.
+
+        Si ``E`` no se indica, intenta estimarlo según el sistema de unidades activo.
+        """
         if (u.system == 'SI') and (E is None):
             E = 4700*(fc*u.MPa)**0.5
             print(E/(u.kgf/u.m**3))
@@ -231,29 +189,20 @@ class ModelBuilder:
     def add_steel_material(self,name,E=2e5*u.MPa,
                            U=0.30,A=0.0000117,
                            mass_per_volume=7850*u.kg/u.m**3):
+        """Crea un material de acero estructural con propiedades isotrópicas."""
         return self.add_material(name,eMatType.Steel,
                                 E,U,A,mass_per_volume)
         
     def add_rebar_material(self,name,E=2e5*u.MPa,
                            A=0.0000117,
                            mass_per_volume=7850*u.kg/u.m**3):
+        """Crea un material de refuerzo como material uniaxial."""
         return self.add_uniaxial_material(name,eMatType.Rebar,
                                 E,A,mass_per_volume)
         
     def set_point_restraint(self, point_name, UX=True, UY=True,
                         UZ=True, RX=True, RY=True, RZ=True):
-        """
-        Define restricciones en un punto
-        
-        Parameters:
-        -----------
-        point_name : str
-            Nombre del punto
-        UX, UY, UZ : bool
-            Restricciones de traslación
-        RX, RY, RZ : bool
-            Restricciones de rotación
-        """
+        """Define restricciones en un punto."""
         restraints = [UX, UY, UZ, RX, RY, RZ]
         self.model.PointObj.SetRestraint(point_name, restraints)
         print(f"Restricciones aplicadas a punto '{point_name}'")
@@ -261,113 +210,28 @@ class ModelBuilder:
     # ==================== FRAMES ====================
     
     def add_rectangle_section(self,section_name, material_name, t3, t2):
-        """
-        Crea una sección rectangular sólida
-        
-        Parameters:
-        -----------
-        model : CSI Model object
-            Objeto del modelo CSI
-        section_name : str
-            Nombre de la sección
-        material_name : str
-            Material de la sección
-        t3 : float
-            Altura de la sección (profundidad)
-        t2 : float
-            Ancho de la sección
-        """
+        """Crea una sección rectangular sólida."""
         self.model.PropFrame.SetRectangle(section_name, material_name, t3, t2)
         # SetRebarBeam / SetRebarColumn
         print(f"Sección rectangular '{section_name}' añadida: {t2} x {t3}")
         
     def add_circle_section(self, section_name, material_name, diameter):
-        """
-        Crea una sección circular sólida
-        
-        Parameters:
-        -----------
-        model : CSI Model object
-            Objeto del modelo CSI
-        section_name : str
-            Nombre de la sección
-        material_name : str
-            Material de la sección
-        diameter : float
-            Diámetro de la sección
-        """
+        """Crea una sección circular sólida."""
         self.model.PropFrame.SetCircle(section_name, material_name, diameter)
         print(f"Sección circular '{section_name}' añadida: ø{diameter}")
         
     def add_pipe_section(self, section_name, material_name, diameter, thickness):
-        """
-        Crea una sección tipo tubo (pipe)
-        
-        Parameters:
-        -----------
-        model : CSI Model object
-            Objeto del modelo CSI
-        section_name : str
-            Nombre de la sección
-        material_name : str
-            Material de la sección
-        diameter : float
-            Diámetro exterior
-        thickness : float
-            Espesor de pared
-        """
+        """Crea una sección tubular circular."""
         self.model.PropFrame.SetPipe(section_name, material_name, diameter, thickness)
         print(f"Sección pipe '{section_name}' añadida: ø{diameter}, t={thickness}")
         
     def add_tube_section(self, section_name, material_name, t3, t2, tf, tw):
-        """
-        Crea una sección tipo tubo rectangular (HSS)
-        
-        Parameters:
-        -----------
-        model : CSI Model object
-            Objeto del modelo CSI
-        section_name : str
-            Nombre de la sección
-        material_name : str
-            Material de la sección
-        t3 : float
-            Altura exterior
-        t2 : float
-            Ancho exterior
-        tf : float
-            Espesor de ala
-        tw : float
-            Espesor de alma
-        """
+        """Crea una sección tubular rectangular."""
         self.model.PropFrame.SetTube(section_name, material_name, t3, t2, tf, tw)
         print(f"Sección tube '{section_name}' añadida: {t2} x {t3}, tf={tf}, tw={tw}")
         
     def add_i_section(self, section_name, material_name, t3, t2, tf, tw, t2b=None, tfb=None):
-        """
-        Crea una sección tipo I
-        
-        Parameters:
-        -----------
-        model : CSI Model object
-            Objeto del modelo CSI
-        section_name : str
-            Nombre de la sección
-        material_name : str
-            Material de la sección
-        t3 : float
-            Altura total de la sección
-        t2 : float
-            Ancho del ala superior
-        tf : float
-            Espesor del ala superior
-        tw : float
-            Espesor del alma
-        t2b : float, optional
-            Ancho del ala inferior (si None, usa t2)
-        tfb : float, optional
-            Espesor del ala inferior (si None, usa tf)
-        """
+        """Crea una sección tipo I."""
         if t2b is None:
             t2b = t2
         if tfb is None:
@@ -377,383 +241,84 @@ class ModelBuilder:
         print(f"Sección I '{section_name}' añadida: h={t3}, bf={t2}/{t2b}, tf={tf}/{tfb}, tw={tw}")
         
     def add_channel_section(self, section_name, material_name, t3, t2, tf, tw):
-        """
-        Crea una sección tipo canal (C)
-        
-        Parameters:
-        -----------
-        model : CSI Model object
-            Objeto del modelo CSI
-        section_name : str
-            Nombre de la sección
-        material_name : str
-            Material de la sección
-        t3 : float
-            Altura de la sección
-        t2 : float
-            Ancho del ala
-        tf : float
-            Espesor del ala
-        tw : float
-            Espesor del alma
-        """
+        """Crea una sección tipo canal."""
         self.model.PropFrame.SetChannel(section_name, material_name, t3, t2, tf, tw)
         print(f"Sección canal '{section_name}' añadida: h={t3}, bf={t2}, tf={tf}, tw={tw}")
         
     def add_tee_section(self, section_name, material_name, t3, t2, tf, tw):
-        """
-        Crea una sección tipo T
-        
-        Parameters:
-        -----------
-        model : CSI Model object
-            Objeto del modelo CSI
-        section_name : str
-            Nombre de la sección
-        material_name : str
-            Material de la sección
-        t3 : float
-            Altura de la sección
-        t2 : float
-            Ancho del ala
-        tf : float
-            Espesor del ala
-        tw : float
-            Espesor del alma
-        """
+        """Crea una sección tipo T."""
         self.model.PropFrame.SetTee(section_name, material_name, t3, t2, tf, tw)
         print(f"Sección T '{section_name}' añadida: h={t3}, bf={t2}, tf={tf}, tw={tw}")
         
     def add_angle_section(self, section_name, material_name, t3, t2, tf, tw):
-        """
-        Crea una sección tipo ángulo (L)
-        
-        Parameters:
-        -----------
-        model : CSI Model object
-            Objeto del modelo CSI
-        section_name : str
-            Nombre de la sección
-        material_name : str
-            Material de la sección
-        t3 : float
-            Altura del ángulo
-        t2 : float
-            Ancho del ángulo
-        tf : float
-            Espesor de la pierna vertical
-        tw : float
-            Espesor de la pierna horizontal
-        """
+        """Crea una sección tipo ángulo."""
         self.model.PropFrame.SetAngle(section_name, material_name, t3, t2, tf, tw)
         print(f"Sección ángulo '{section_name}' añadida: {t3} x {t2}, tf={tf}, tw={tw}")
         
     def add_double_angle_section(self, section_name, material_name, t3, t2, tf, tw, dis):
-        """
-        Crea una sección de doble ángulo
-        
-        Parameters:
-        -----------
-        model : CSI Model object
-            Objeto del modelo CSI
-        section_name : str
-            Nombre de la sección
-        material_name : str
-            Material de la sección
-        t3 : float
-            Altura del ángulo
-        t2 : float
-            Ancho del ángulo
-        tf : float
-            Espesor de la pierna vertical
-        tw : float
-            Espesor de la pierna horizontal
-        dis : float
-            Separación entre ángulos
-        """
+        """Crea una sección de doble ángulo."""
         self.model.PropFrame.SetDblAngle(section_name, material_name, t3, t2, tf, tw, dis)
         print(f"Sección doble ángulo '{section_name}' añadida: 2L {t3}x{t2}, sep={dis}")
         
     def add_double_channel_section(self, section_name, material_name, t3, t2, tf, tw, dis):
-        """
-        Crea una sección de doble canal
-        
-        Parameters:
-        -----------
-        model : CSI Model object
-            Objeto del modelo CSI
-        section_name : str
-            Nombre de la sección
-        material_name : str
-            Material de la sección
-        t3 : float
-            Altura de la canal
-        t2 : float
-            Ancho del ala
-        tf : float
-            Espesor del ala
-        tw : float
-            Espesor del alma
-        dis : float
-            Separación entre canales
-        """
+        """Crea una sección de doble canal."""
         self.model.PropFrame.SetDblChannel(section_name, material_name, t3, t2, tf, tw, dis)
         print(f"Sección doble canal '{section_name}' añadida: 2C h={t3}, sep={dis}")
         
     def add_concrete_box_section(self, section_name, material_name, t3, t2, tf, tw):
-        """
-        Crea una sección cajón de concreto
-        
-        Parameters:
-        -----------
-        model : CSI Model object
-            Objeto del modelo CSI
-        section_name : str
-            Nombre de la sección
-        material_name : str
-            Material de la sección
-        t3 : float
-            Altura exterior
-        t2 : float
-            Ancho exterior
-        tf : float
-            Espesor de losa superior/inferior
-        tw : float
-            Espesor de almas
-        """
+        """Crea una sección cajón de concreto."""
         self.model.PropFrame.SetConcreteBox(section_name, material_name, t3, t2, tf, tw)
         print(f"Sección cajón concreto '{section_name}' añadida: {t2}x{t3}, tf={tf}, tw={tw}")
         
     def add_concrete_tee_section(self, section_name, material_name, t3, t2, tf, tw, twt=None, mirror=False):
-        """
-        Crea una sección T de concreto
-
-        Parameters:
-        -----------
-        section_name : str
-            Nombre de la sección
-        material_name : str
-            Material de la sección
-        t3 : float
-            Altura total
-        t2 : float
-            Ancho del ala
-        tf : float
-            Espesor del ala
-        tw : float
-            Espesor del alma (inferior)
-        twt : float, optional
-            Espesor del alma superior (si None, usa tw)
-        mirror : bool, optional
-            Si True, refleja la sección sobre el eje 3 (default: False)
-        """
+        """Crea una sección T de concreto."""
         if twt is None:
             twt = tw
         self.model.PropFrame.SetConcreteTee(section_name, material_name, t3, t2, tf, tw, twt, mirror)
         print(f"Sección T concreto '{section_name}' añadida: h={t3}, bf={t2}")
         
     def add_concrete_L_section(self, section_name, material_name, t3, t2, tf, tw):
-        """
-        Crea una sección L de concreto
-        
-        Parameters:
-        -----------
-        model : CSI Model object
-            Objeto del modelo CSI
-        section_name : str
-            Nombre de la sección
-        material_name : str
-            Material de la sección
-        t3 : float
-            Altura
-        t2 : float
-            Ancho
-        tf : float
-            Espesor vertical
-        tw : float
-            Espesor horizontal
-        """
+        """Crea una sección L de concreto."""
         self.model.PropFrame.SetConcreteL(section_name, material_name, t3, t2, tf, tw)
         print(f"Sección L concreto '{section_name}' añadida: {t3}x{t2}")
         
     def add_concrete_pipe_section(self, section_name, material_name, diameter, thickness):
-        """
-        Crea una sección tubo de concreto
-        
-        Parameters:
-        -----------
-        model : CSI Model object
-            Objeto del modelo CSI
-        section_name : str
-            Nombre de la sección
-        material_name : str
-            Material de la sección
-        diameter : float
-            Diámetro exterior
-        thickness : float
-            Espesor de pared
-        """
+        """Crea una sección tubular de concreto."""
         self.model.PropFrame.SetConcretePipe(section_name, material_name, diameter, thickness)
         print(f"Sección tubo concreto '{section_name}' añadida: ø{diameter}, t={thickness}")
         
     def add_concrete_cross_section(self, section_name, material_name, t3, t2, tf, tw):
-        """
-        Crea una sección tipo cruz de concreto
-        
-        Parameters:
-        -----------
-        model : CSI Model object
-            Objeto del modelo CSI
-        section_name : str
-            Nombre de la sección
-        material_name : str
-            Material de la sección
-        t3 : float
-            Altura total
-        t2 : float
-            Ancho total
-        tf : float
-            Espesor del ala
-        tw : float
-            Espesor del alma
-        """
+        """Crea una sección tipo cruz de concreto."""
         self.model.PropFrame.SetConcreteCross(section_name, material_name, t3, t2, tf, tw)
         print(f"Sección cruz concreto '{section_name}' añadida: {t2}x{t3}")
         
     def add_plate_section(self, section_name, material_name, thickness):
-        """
-        Crea una sección tipo placa sólida
-        
-        Parameters:
-        -----------
-        model : CSI Model object
-            Objeto del modelo CSI
-        section_name : str
-            Nombre de la sección
-        material_name : str
-            Material de la sección
-        thickness : float
-            Espesor de la placa
-        """
+        """Crea una sección tipo placa sólida."""
         self.model.PropFrame.SetPlate(section_name, material_name, thickness)
         print(f"Sección placa '{section_name}' añadida: t={thickness}")
         
     def add_rod_section(self, section_name, material_name, diameter):
-        """
-        Crea una sección tipo varilla sólida
-        
-        Parameters:
-        -----------
-        model : CSI Model object
-            Objeto del modelo CSI
-        section_name : str
-            Nombre de la sección
-        material_name : str
-            Material de la sección
-        diameter : float
-            Diámetro de la varilla
-        """
+        """Crea una sección tipo varilla sólida."""
         self.model.PropFrame.SetRod(section_name, material_name, diameter)
         print(f"Sección varilla '{section_name}' añadida: ø{diameter}")
         
     def add_cold_formed_c_section(self, section_name, material_name, t3, t2, thickness, lip):
-        """
-        Crea una sección C de acero conformado en frío
-        
-        Parameters:
-        -----------
-        model : CSI Model object
-            Objeto del modelo CSI
-        section_name : str
-            Nombre de la sección
-        material_name : str
-            Material de la sección
-        t3 : float
-            Altura de la sección
-        t2 : float
-            Ancho del ala
-        thickness : float
-            Espesor
-        lip : float
-            Longitud del labio
-        """
+        """Crea una sección C de acero conformado en frío."""
         self.model.PropFrame.SetColdC(section_name, material_name, t3, t2, thickness, lip)
         print(f"Sección C conformada '{section_name}' añadida: h={t3}, bf={t2}, t={thickness}")
         
     def add_cold_formed_z_section(self, section_name, material_name, t3, t2, thickness, lip):
-        """
-        Crea una sección Z de acero conformado en frío
-        
-        Parameters:
-        -----------
-        model : CSI Model object
-            Objeto del modelo CSI
-        section_name : str
-            Nombre de la sección
-        material_name : str
-            Material de la sección
-        t3 : float
-            Altura de la sección
-        t2 : float
-            Ancho del ala
-        thickness : float
-            Espesor
-        lip : float
-            Longitud del labio
-        """
+        """Crea una sección Z de acero conformado en frío."""
         self.model.PropFrame.SetColdZ(section_name, material_name, t3, t2, thickness, lip)
         print(f"Sección Z conformada '{section_name}' añadida: h={t3}, bf={t2}, t={thickness}")
         
     def add_cold_formed_hat_section(self, section_name, material_name, t3, t2, thickness):
-        """
-        Crea una sección Hat de acero conformado en frío
-        
-        Parameters:
-        -----------
-        model : CSI Model object
-            Objeto del modelo CSI
-        section_name : str
-            Nombre de la sección
-        material_name : str
-            Material de la sección
-        t3 : float
-            Altura de la sección
-        t2 : float
-            Ancho total
-        thickness : float
-            Espesor
-        """
+        """Crea una sección Hat de acero conformado en frío."""
         self.model.PropFrame.SetColdHat(section_name, material_name, t3, t2, thickness)
         print(f"Sección Hat conformada '{section_name}' añadida: h={t3}, b={t2}, t={thickness}")
         
     def add_frame_section(self, section_name, material_name, section_type, **kwargs):
-        """
-        Función unificada para añadir cualquier tipo de sección
-        
-        Parameters:
-        -----------
-        model : CSI Model object
-            Objeto del modelo CSI
-        section_name : str
-            Nombre de la sección
-        material_name : str
-            Material de la sección
-        section_type : str
-            Tipo de sección (ver SECTION_FUNCTIONS keys)
-        **kwargs : dict
-            Parámetros específicos del tipo de sección
-        
-        Examples:
-        ---------
-        # Sección rectangular
-        add_frame_section('SEC1', 'CONC25', 'Rectangle', t3=0.5, t2=0.3)
-        
-        # Sección I
-        add_frame_section('SEC2', 'A36', 'I', t3=0.6, t2=0.2, tf=0.02, tw=0.01)
-        
-        # Sección circular
-        add_frame_section('SEC3', 'A36', 'Circle', diameter=0.3)
-        """
+        """Añade una sección de frame usando un nombre de tipo unificado."""
         # Diccionario de mapeo de funciones
         SECTION_FUNCTIONS = {
             'Rectangle': self.add_rectangle_section,
@@ -800,6 +365,11 @@ class ModelBuilder:
         self._tee_section_table = None
         
     def add_tee_SD_sections(self,name,material,height,width,thick,apply=False):
+        """
+        Crea secciones tipo tee mediante tablas de Section Designer.
+
+        Acepta valores escalares o listas compatibles para definir varias secciones.
+        """
         # Comprobar compatibilidad de los datos
         vals = [name, height, width, thick]   # obligatorios
         if isinstance(material, (list,tuple)): 
@@ -876,6 +446,11 @@ class ModelBuilder:
             self.apply_tee_sections(version_1,version_2)
     
     def add_line_bar_to_section(self,section_name,material,p1,p2,size,max_spacing,end_bars='Yes'):
+        """
+        Añade una línea de barras de refuerzo a una sección de Section Designer.
+
+        La geometría de la línea se define por dos puntos en coordenadas locales.
+        """
         table_name = 'Section Designer Shapes - Reinforcing - Line Bar'
         columns = ['SectionType', 'SectionName', 'ShapeName', 'Material', 'X1', 'Y1', 'X2',
        'Y2', 'RebarSize', 'Area', 'HasEndBars', 'LayoutType', 'MaxSpacing',
@@ -897,20 +472,7 @@ class ModelBuilder:
         self.set_table(table_name,table,version,apply=True)
                 
     def add_frame(self,  point_i, point_j, section_name):
-        """
-        Añade un frame entre dos puntos
-        
-        Parameters:
-        -----------
-        frame_name : str
-            Nombre del frame
-        point_i : str
-            Punto inicial
-        point_j : str
-            Punto final   
-        section_name : str
-            Sección asignada
-        """
+        """Añade un frame entre dos puntos."""
         frame_name = self.model.FrameObj.AddByPoint(point_i, point_j)[0]
         self.model.FrameObj.SetSection(frame_name, section_name)
         print(f"Frame '{frame_name}' añadido entre '{point_i}' y '{point_j}'")
@@ -919,30 +481,7 @@ class ModelBuilder:
 
     def add_slab_section(self, section_name, material_name, thickness, 
                         slab_type=0, shell_type=1):
-        """
-        Crea una sección de losa básica
-        
-        Parameters:
-        -----------
-        model : CSI Model object
-            Objeto del modelo CSI
-        section_name : str
-            Nombre de la sección
-        material_name : str
-            Material de la losa
-        thickness : float
-            Espesor de la losa
-        slab_type : int, default 0
-            Tipo de losa:
-            - 0 = Slab 
-            - 1 = Drop 
-            - 2 = Mat 
-            - 3 = Footing 
-        shell_type : int, default 1
-            Tipo de shell:
-            - 1 = Shell-thin
-            - 2 = Shell-thick
-        """
+        """Crea una sección de losa básica."""
         self.model.PropArea.SetSlab(section_name, slab_type, shell_type, 
                             material_name, thickness)
         slab_types = {0: 'Slab', 1: 'Drop', 2: 'Mat', 3: 'Footing'}
@@ -952,29 +491,7 @@ class ModelBuilder:
     def add_ribbed_slab_section(self, section_name, material_name,
                                 overall_depth, slab_thickness, stem_width,
                                 rib_spacing, rib_direction=1):
-        """
-        Crea una sección de losa nervada (ribbed slab)
-        NOTA: Esta función requiere DOS llamadas a la API
-
-        Parameters:
-        -----------
-        section_name : str
-            Nombre de la sección
-        material_name : str
-            Material de la losa
-        overall_depth : float
-            Altura total de la losa (incluyendo nervios)
-        slab_thickness : float
-            Espesor de la losa superior
-        stem_width : float
-            Ancho de los nervios
-        rib_spacing : float
-            Espaciamiento entre nervios (centro a centro)
-        rib_direction : int, default 1
-            Dirección de los nervios:
-            - 1 = Parallel to local 1 axis
-            - 2 = Parallel to local 2 axis
-        """
+        """Crea una sección de losa nervada."""
         # Inicializar como slab básico
         self.model.PropArea.SetSlab(section_name, 0, 1, material_name, overall_depth)
 
@@ -1001,31 +518,7 @@ class ModelBuilder:
     def add_waffle_slab_section(self, section_name, material_name,
                                 overall_depth, slab_thickness, stem_width_dir1, 
                                 stem_width_dir2, rib_spacing_dir1, rib_spacing_dir2):
-        """
-        Crea una sección de losa reticular/waffle (losa nervada en dos direcciones)
-        NOTA: Esta función requiere DOS llamadas a la API
-        
-        Parameters:
-        -----------
-        model : CSI Model object
-            Objeto del modelo CSI
-        section_name : str
-            Nombre de la sección
-        material_name : str
-            Material de la losa
-        overall_depth : float
-            Altura total de la losa
-        slab_thickness : float
-            Espesor de la losa superior
-        stem_width_dir1 : float
-            Ancho de nervios en dirección 1
-        stem_width_dir2 : float
-            Ancho de nervios en dirección 2
-        rib_spacing_dir1 : float
-            Espaciamiento de nervios en dirección 1 (c/c)
-        rib_spacing_dir2 : float
-            Espaciamiento de nervios en dirección 2 (c/c)
-        """
+        """Crea una sección de losa reticular."""
         # Inicializar como slab básico
         self.model.PropArea.SetSlab(section_name, 0, 1, material_name, overall_depth)
         
@@ -1049,26 +542,7 @@ class ModelBuilder:
     # ==================== WALLS (MUROS) ====================
     def add_wall_section(self, section_name, material_name, thickness,
                         wall_prop_type=1, shell_type=1):
-        """
-        Crea una sección de muro
-
-        Parameters:
-        -----------
-        section_name : str
-            Nombre de la sección
-        material_name : str
-            Material del muro
-        thickness : float
-            Espesor del muro
-        wall_prop_type : int, default 1
-            Tipo de propiedad de muro:
-            - 1 = Specified (especificado)
-            - 2 = AutoSelectList (lista de auto-selección)
-        shell_type : int, default 1
-            Tipo de shell:
-            - 1 = Shell-thin (cáscara delgada)
-            - 2 = Shell-thick (cáscara gruesa)
-        """
+        """Crea una sección de muro."""
         self.model.PropArea.SetWall(section_name, wall_prop_type, shell_type,
                             material_name, thickness)
         print(f"Sección de muro '{section_name}' añadida: t={thickness}")
@@ -1079,36 +553,7 @@ class ModelBuilder:
                                 fill_material, concrete_material, 
                                 slab_depth, rib_depth, rib_width_top, rib_width_bot,
                                 rib_spacing, shear_studs_per_rib):
-        """
-        Crea una sección de deck relleno (losa colaborante rellena)
-        
-        Parameters:
-        -----------
-        model : CSI Model object
-            Objeto del modelo CSI
-        section_name : str
-            Nombre de la sección
-        deck_type : str
-            Tipo de deck (referencia del fabricante)
-        shell_type : int
-            Tipo de shell (1=thin, 2=thick)
-        fill_material : str
-            Nombre del material de relleno del deck
-        concrete_material : str
-            Nombre del material de concreto sobre el deck
-        slab_depth : float
-            Profundidad total de la losa
-        rib_depth : float
-            Profundidad de las nervaduras del deck
-        rib_width_top : float
-            Ancho superior de la nervadura
-        rib_width_bot : float
-            Ancho inferior de la nervadura
-        rib_spacing : float
-            Espaciamiento de nervaduras
-        shear_studs_per_rib : int
-            Número de conectores de corte por nervadura
-        """
+        """Crea una sección de deck relleno."""
         self.model.PropArea.SetDeckFilled(
             section_name, deck_type, shell_type, fill_material, 
             concrete_material, slab_depth, rib_depth, rib_width_top, 
@@ -1120,34 +565,7 @@ class ModelBuilder:
     def add_deck_unfilled_section(self, section_name, deck_type, shell_type, 
                                 material, rib_depth, rib_width_top, rib_width_bot,
                                 rib_spacing, shear_thickness, unit_weight):
-        """
-        Crea una sección de deck sin relleno (losa colaborante sin relleno)
-        
-        Parameters:
-        -----------
-        model : CSI Model object
-            Objeto del modelo CSI
-        section_name : str
-            Nombre de la sección
-        deck_type : str
-            Tipo de deck
-        shell_type : int
-            Tipo de shell (1=thin, 2=thick)
-        material : str
-            Material del deck
-        rib_depth : float
-            Profundidad de las nervaduras
-        rib_width_top : float
-            Ancho superior de la nervadura
-        rib_width_bot : float
-            Ancho inferior de la nervadura
-        rib_spacing : float
-            Espaciamiento de nervaduras
-        shear_thickness : float
-            Espesor para corte
-        unit_weight : float
-            Peso unitario
-        """
+        """Crea una sección de deck sin relleno."""
         self.model.PropArea.SetDeckUnfilled(
             section_name, deck_type, shell_type, material,
             rib_depth, rib_width_top, rib_width_bot, rib_spacing,
@@ -1158,24 +576,7 @@ class ModelBuilder:
 
     def add_deck_solid_slab_section(self, section_name, shell_type, material, 
                                     depth, shear_studs_per_rib):
-        """
-        Crea una sección de deck tipo losa sólida
-        
-        Parameters:
-        -----------
-        model : CSI Model object
-            Objeto del modelo CSI
-        section_name : str
-            Nombre de la sección
-        shell_type : int
-            Tipo de shell (1=thin, 2=thick)
-        material : str
-            Material de la losa
-        depth : float
-            Profundidad/espesor de la losa
-        shear_studs_per_rib : int
-            Número de conectores de corte por nervadura
-        """
+        """Crea una sección de deck tipo losa sólida."""
         self.model.PropArea.SetDeckSolidSlab(
             section_name, shell_type, material, depth, shear_studs_per_rib
         )
@@ -1186,28 +587,7 @@ class ModelBuilder:
 
     def add_shell_layer(self, section_name, layer_name, distance_from_ref, 
                     thickness, shell_type, material, angle=0.0):
-        """
-        Añade una capa a una sección tipo shell (para losas multicapa)
-        
-        Parameters:
-        -----------
-        model : CSI Model object
-            Objeto del modelo CSI
-        section_name : str
-            Nombre de la sección shell
-        layer_name : str
-            Nombre de la capa
-        distance_from_ref : float
-            Distancia desde la superficie de referencia
-        thickness : float
-            Espesor de la capa
-        shell_type : int
-            Tipo de shell (1=membrane, 2=plate, 3=shell)
-        material : str
-            Material de la capa
-        angle : float, default 0.0
-            Ángulo de orientación del material (grados)
-        """
+        """Añade una capa a una sección tipo shell."""
         self.model.PropArea.SetShellLayer(
             section_name, layer_name, distance_from_ref,
             thickness, shell_type, 0, material, angle
@@ -1215,33 +595,7 @@ class ModelBuilder:
         print(f"Capa '{layer_name}' añadida a sección '{section_name}': t={thickness}")
 
     def add_area_section(self, section_name, material_name, section_type, **kwargs):
-        """
-        Función unificada para añadir cualquier tipo de sección de área
-        
-        Parameters:
-        -----------
-        section_name : str
-            Nombre de la sección
-        material_name : str
-            Material de la sección
-        section_type : str
-            Tipo de sección (ver AREA_SECTION_FUNCTIONS keys)
-        **kwargs : dict
-            Parámetros específicos del tipo de sección
-        
-        Examples:
-        ---------
-        # Losa básica
-        add_area_section('LOSA20', 'CONC25', 'Slab', thickness=0.20)
-        
-        # Losa nervada
-        add_area_section('LOSA_NERV', 'CONC25', 'RibbedSlab',
-                        overall_depth=0.30, slab_thickness=0.05, 
-                        stem_width=0.10, rib_spacing=0.60, rib_direction=1)
-        
-        # Muro
-        add_area_section('MURO20', 'CONC25', 'Wall', thickness=0.20)
-        """
+        """Añade una sección de área usando un nombre de tipo unificado."""
         
         AREA_SECTION_FUNCTIONS = {
             'Slab': self.add_slab_section,
@@ -1267,6 +621,11 @@ class ModelBuilder:
             func(section_name, **kwargs)
             
     def add_area_obj(self,points,section_name):
+        """
+        Crea un área a partir de una lista de puntos y asigna una sección.
+
+        Si es necesario, invierte el orden de los puntos para mantener orientación CCW.
+        """
         num_points = len(points)
         if not is_ccw(points):
             points = list(reversed(points))
@@ -1281,78 +640,137 @@ class ModelBuilder:
      # ==================== LOAD PATTERNS ====================
     
     def add_load_pattern(self, pattern_name, pattern_type=1):
-        """
-        Añade un patrón de carga
-        
-        Parameters:
-        -----------
-        pattern_name : str
-            Nombre del patrón
-        pattern_type : int
-            Tipo (1=Dead, 2=SuperDead, 3=Live, 4=ReduceLive, etc.)
-        """
+        """Añade un patrón de carga."""
         self.model.LoadPatterns.Add(pattern_name, pattern_type)
         print(f"Patrón de carga '{pattern_name}' añadido")
     
     def add_point_load(self, point_name, load_pattern, Fx=0, Fy=0, Fz=0, 
                       Mx=0, My=0, Mz=0):
-        """
-        Añade carga puntual a un punto
-        
-        Parameters:
-        -----------
-        point_name : str
-            Nombre del punto
-        load_pattern : str
-            Patrón de carga
-        Fx, Fy, Fz : float
-            Fuerzas en direcciones globales
-        Mx, My, Mz : float
-            Momentos en direcciones globales
-        """
+        """Añade una carga puntual a un punto."""
         forces = [Fx, Fy, Fz, Mx, My, Mz]
         self.model.PointObj.SetLoadForce(point_name, load_pattern, forces)
         print(f"Carga puntual añadida a '{point_name}'")
     
     def add_frame_distributed_load(self, frame_name, load_pattern, direction, 
                                    value, dist_type=1):
-        """
-        Añade carga distribuida a un frame
-        
-        Parameters:
-        -----------
-        frame_name : str
-            Nombre del frame
-        load_pattern : str
-            Patrón de carga
-        direction : int
-            Dirección (1=Local1, 2=Local2, 3=Local3, 4-6=Global X,Y,Z)
-        value : float
-            Valor de la carga
-        dist_type : int
-            Tipo de distribución (1=Force, 2=Moment)
-        """
+        """Añade una carga distribuida a un frame."""
         self.model.FrameObj.SetLoadDistributed(frame_name, load_pattern, 
                                               dist_type, direction, 0, 1, 
                                               value, value)
         print(f"Carga distribuida añadida a frame '{frame_name}'")
     
     def add_area_uniform_load(self, area_name, load_pattern, value, direction=6):
-        """
-        Añade carga uniforme a un área
-        
-        Parameters:
-        -----------
-        area_name : str
-            Nombre del área
-        load_pattern : str
-            Patrón de carga
-        value : float
-            Valor de la carga
-        direction : int
-            Dirección (4-6 = Global X,Y,Z)
-        """
+        """Añade una carga uniforme a un área."""
         self.model.AreaObj.SetLoadUniform(area_name, load_pattern, value, direction)
         print(f"Carga uniforme añadida a área '{area_name}'")
+
+    # ==================== EXPORT TABULAR DATA ====================
+
+    def export_tabular_data(self, tabular_data, table_names=None, apply=True):
+        """Exporta tablas editables al modelo a partir de un diccionario de DataFrames."""
+        if not isinstance(tabular_data, dict):
+            raise TypeError("tabular_data debe ser un diccionario")
+
+        # Determinar qué tablas exportar
+        if table_names is None:
+            tables_to_export = tabular_data.keys()
+        else:
+            tables_to_export = table_names
+            # Verificar que todas las tablas existen en tabular_data
+            missing = set(tables_to_export) - set(tabular_data.keys())
+            if missing:
+                raise ValueError(f"Las siguientes tablas no están en tabular_data: {missing}")
+
+        export_status = {}
+
+        for table_name in tables_to_export:
+            try:
+                table = tabular_data[table_name]
+
+                if table.empty:
+                    print(f"Tabla '{table_name}' está vacía, omitiendo...")
+                    export_status[table_name] = 'skipped: empty'
+                    continue
+
+                # Usar set_table que ya existe en la clase
+                self.set_table(table_name, table, table_version=1, apply=False)
+                export_status[table_name] = 'success'
+                print(f"Tabla '{table_name}' exportada exitosamente ({len(table)} registros)")
+
+            except Exception as e:
+                error_msg = f"error: {str(e)}"
+                export_status[table_name] = error_msg
+                print(f"Error al exportar tabla '{table_name}': {str(e)}")
+
+        # Aplicar todos los cambios al final si apply=True
+        if apply:
+            try:
+                self.apply_edited_table()
+                print(f"\nCambios aplicados exitosamente a {len(export_status)} tablas")
+            except Exception as e:
+                print(f"\nError al aplicar cambios: {str(e)}")
+                raise
+
+        return export_status
+
+    def export_tables_batch(self, tabular_data, table_groups=None):
+        """Exporta tablas por lotes agrupados."""
+
+        # Grupos predefinidos por categoría
+        if table_groups is None:
+            table_groups = self._get_default_table_groups(tabular_data)
+
+        batch_results = {}
+
+        for group_name, table_list in table_groups.items():
+            print(f"\n{'='*60}")
+            print(f"Exportando grupo: {group_name}")
+            print(f"{'='*60}")
+
+            try:
+                # Filtrar solo las tablas que existen en tabular_data
+                existing_tables = [t for t in table_list if t in tabular_data]
+
+                if not existing_tables:
+                    print(f"No hay tablas disponibles para el grupo '{group_name}'")
+                    batch_results[group_name] = {'status': 'skipped', 'tables': {}}
+                    continue
+
+                # Exportar el grupo
+                status = self.export_tabular_data(tabular_data, existing_tables, apply=True)
+                batch_results[group_name] = {'status': 'completed', 'tables': status}
+
+            except Exception as e:
+                print(f"Error al exportar grupo '{group_name}': {str(e)}")
+                batch_results[group_name] = {'status': 'error', 'error': str(e)}
+
+        return batch_results
+
+    def _get_default_table_groups(self, tabular_data):
+        """Genera grupos predefinidos para la exportación tabular."""
+        all_tables = list(tabular_data.keys())
+
+        groups = {
+            'materials': [t for t in all_tables if 'Material Properties' in t],
+            'frame_sections': [t for t in all_tables if 'Frame Section' in t],
+            'area_sections': [t for t in all_tables if 'Area Section' in t or 'Slab Property' in t or 'Wall Property' in t],
+            'connectivity': [t for t in all_tables if 'Connectivity' in t or 'Joint Coordinates' in t],
+            'loads': [t for t in all_tables if 'Load' in t and 'Combination' not in t],
+            'load_combinations': [t for t in all_tables if 'Combination' in t],
+            'design': [t for t in all_tables if 'Design' in t or 'Preference' in t],
+            'other': []
+        }
+
+        # Clasificar tablas no categorizadas
+        categorized = set()
+        for group_tables in groups.values():
+            categorized.update(group_tables)
+
+        groups['other'] = [t for t in all_tables if t not in categorized]
+
+        # Eliminar grupos vacíos
+        groups = {k: v for k, v in groups.items() if v}
+
+        return groups
     
     

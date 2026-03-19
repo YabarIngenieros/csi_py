@@ -1,4 +1,6 @@
 from .constants import eMatType,u
+from .constants import EtabsError
+from .extractor import DataExtractor
 import numpy as np
 
 import pandas as pd
@@ -15,9 +17,9 @@ def is_ccw(points):
         area += (x2 - x1) * (y2 + y1)
 
     return area < 0
-class ModelBuilder:
+class ModelBuilder(DataExtractor):
     """
-    Mixin con utilidades de modelamiento y edición tabular del modelo CSI.
+    Capa de construcción y edición tabular sobre la extracción CSI.
 
     Expone helpers para crear materiales, secciones, objetos y cargas.
     """
@@ -25,6 +27,34 @@ class ModelBuilder:
         super().__init__()
         self._section_definitions_table = None
         self._tee_section_table = None
+
+    def get_editing_table(self, table_name):
+        """
+        Extrae una tabla editable del modelo.
+
+        Retorna la versión de tabla y el DataFrame listo para edición tabular.
+        """
+        data = self.model.DatabaseTables.GetTableForEditingArray(
+            table_name, GroupName=''
+        )
+
+        flag = data[-1]
+        if flag == 1:
+            return 1, pd.DataFrame()
+        if flag == -96:
+            raise ValueError(f"La tabla '{table_name}' no existe en el modelo ETABS.")
+        if flag != 0:
+            raise EtabsError(f"Error al extraer la tabla editable, flag devuelto de {flag}")
+
+        version = data[0]
+        columns = data[1]
+        num_records = data[2]
+        table_data = [i if i else '' for i in data[3]]
+
+        df = pd.DataFrame(table_data)
+        df = df.values.reshape(num_records, len(columns))
+        table = pd.DataFrame(df, columns=columns)
+        return version, table
         
     # Tables
     def apply_edited_table(self):
@@ -59,7 +89,7 @@ class ModelBuilder:
         Retorna la versión de tabla y el DataFrame asociado.
         """
         if name in self.available_tables['Table'].values:
-            version,table = self.get_table(name,to_edit=True)
+            version,table = self.get_editing_table(name)
         else:
             version = 1
             table = pd.DataFrame(columns=columns)
@@ -91,7 +121,7 @@ class ModelBuilder:
         """
         table_name_1 = 'Grid Definitions - General'
         table_1:pd.DataFrame # hint
-        version, table_1 = self.get_table(table_name_1,to_edit=True)
+        version, table_1 = self.get_editing_table(table_name_1)
         
         if table_1.empty:
             row = ['T1','G1','Cartesian','0','0','0','Default','','',
@@ -101,7 +131,7 @@ class ModelBuilder:
             
         table_name_2 = 'Grid Definitions - Grid Lines'
         # reiniciar tabla
-        version,table_2 = self.get_table(table_name_2,to_edit=True)
+        version,table_2 = self.get_editing_table(table_name_2)
         table_2.drop(table_2.index, inplace=True)
         if spacing:
             X = np.array([0]+X).cumsum()
@@ -355,7 +385,7 @@ class ModelBuilder:
         table_1 = 'Frame Section Property Definitions - Section Designer'
         table_2 = 'Section Designer Shapes - Concrete Tee'
         if self._section_definitions_table is None:
-            version_1,self._section_definitions_table = self.get_table(table_1,to_edit=True)
+            version_1,self._section_definitions_table = self.get_editing_table(table_1)
         if self._tee_section_table is None: # No hay cambios a aplicar
             return
         self.set_table(table_1,self._section_definitions_table,version_1,apply=False)
@@ -402,7 +432,7 @@ class ModelBuilder:
         '''
             
         if self._section_definitions_table is None:
-            version_1,table = self.get_table(table_1,to_edit=True)
+            version_1,table = self.get_editing_table(table_1)
         else:
             version_1=1
             table = self._section_definitions_table
@@ -426,7 +456,7 @@ class ModelBuilder:
         '''
         
         if self._tee_section_table is None:
-            version_2,table = self.get_table(table_2,to_edit=True)
+            version_2,table = self.get_editing_table(table_2)
         else:
             version_2 = 1
             table = self._tee_section_table

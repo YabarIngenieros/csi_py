@@ -1,6 +1,4 @@
 from .constants import eUnits, u
-from .extractor import DataExtractor
-from .builder import ModelBuilder
 
 import importlib
 import os
@@ -267,11 +265,11 @@ def get_available_backends():
     return ["dotnet", "comtypes"]
 
 
-class CSIHandler(DataExtractor, ModelBuilder):
+class Handler:
     """
-    Punto de entrada principal para conectar y operar sobre modelos CSI.
+    Clase base de conexión para modelos CSI.
 
-    Combina la capa de conexión con las utilidades de extracción y modelamiento.
+    Gestiona backend, adjunción a instancias y operaciones básicas sobre el modelo.
     """
     def __init__(self, program="ETABS", units=u.csi_units, backend="auto", dll_path=None):
         self.program = validate_programs(program)
@@ -288,7 +286,6 @@ class CSIHandler(DataExtractor, ModelBuilder):
         self.backend = self.connector.name
         self.helper = self.connector.helper
         self.api_module = getattr(self.connector, "module", None)
-        super().__init__()
 
     def _bind_model(self):
         self.model = self.connector.get_sap_model(self.object)
@@ -398,6 +395,18 @@ class CSIHandler(DataExtractor, ModelBuilder):
     def set_units(self):
         """Establece las unidades activas del modelo según ``self.units``."""
         self.model.SetPresentUnits(eUnits[self.units])
+
+
+from .extractor import DataExtractor
+from .builder import ModelBuilder
+
+
+class CSIHandler(ModelBuilder):
+    """
+    Clase final de trabajo para operar sobre modelos CSI.
+
+    Hereda conexión, extracción y construcción en una sola API pública.
+    """
 
 
 if __name__ == "__main__":

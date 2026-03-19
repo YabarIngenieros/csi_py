@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 
 from .constants import EtabsError, eFramePropType
+from .handler import Handler
 
 # funciones de normalización
 def format_list_args(names,defect_values=None,check_values=True):
@@ -16,9 +17,9 @@ def format_list_args(names,defect_values=None,check_values=True):
     return names
         
 
-class DataExtractor:
+class DataExtractor(Handler):
     """
-    Mixin con utilidades de lectura, resultados y tablas del modelo CSI.
+    Capa de extracción de datos sobre la conexión base CSI.
 
     Reúne propiedades cacheadas y métodos para extraer geometría, cargas y resultados.
     """
@@ -84,28 +85,20 @@ class DataExtractor:
         df = df[df['ImportType'].isin([2,3])].reset_index(drop=True)
         return df
     
-    def get_table(self, table_name, set_envelopes=True, to_edit=False, runned=False):
+    def get_table(self, table_name, set_envelopes=True, runned=False):
         """
-        Extrae una tabla del modelo para display o edición.
+        Extrae una tabla de visualización del modelo.
 
         Puede ejecutar el análisis automáticamente si la tabla no tiene resultados.
         """
         self.set_envelopes_for_dysplay(set_envelopes=set_envelopes)
-
-        if to_edit:
-            # Para edición, usar GetTableForEditingArray
-            data = self.model.DatabaseTables.GetTableForEditingArray(
-                table_name, GroupName=''
-            )
-        else:
-            # Para visualización, usar GetTableForDisplayArray
-            data = self.model.DatabaseTables.GetTableForDisplayArray(
-                table_name, FieldKeyList='', GroupName=''
-            )
+        data = self.model.DatabaseTables.GetTableForDisplayArray(
+            table_name, FieldKeyList='', GroupName=''
+        )
 
         flag = data[-1]
         if flag == 1:
-            if to_edit or runned == True:
+            if runned == True:
                 return pd.DataFrame()
             self.model.Analyze.RunAnalysis()
             return self.get_table(table_name,set_envelopes,runned=True)
@@ -116,26 +109,16 @@ class DataExtractor:
         elif flag != 0:
             raise EtabsError(f"Error al extraer la tabla, flag devuelto de {flag}")
 
-        # Parsear datos según el método usado
-        if to_edit:
-            version = data[0]
-            columns = data[1]
-            num_records = data[2]
-            table_data = [i if i else '' for i in data[3]]
-        else:
-            version = data[1]
-            columns = data[2]
-            num_records = data[3]
-            table_data = [i if i else '' for i in data[4]]
+        columns = data[2]
+        num_records = data[3]
+        table_data = [i if i else '' for i in data[4]]
 
         # Convertir a DataFrame
         df = pd.DataFrame(table_data)
         df = df.values.reshape(num_records, len(columns))
         table = pd.DataFrame(df, columns=columns)
-
-        if to_edit:
-            return version, table
         return table
+
     
     @property
     def tabular_data(self):

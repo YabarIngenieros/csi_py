@@ -8,6 +8,7 @@ Documentacion del proyecto organizada para consulta local y publicacion con Sphi
 
 SPEC
 ARQUITECTURA
+DEVELOPER
 api/index
 USO_API
 ```
@@ -26,6 +27,7 @@ model = CSIHandler(program="ETABS", backend="auto")
 
 - [Especificacion](SPEC.md): contratos y alcance
 - [Arquitectura](ARQUITECTURA.md): organizacion interna por capas
+- [Developer Guide](DEVELOPER.md): objetos internos, backends y flujo de compatibilidad
 - [Indice de API](api/index.md): referencia agrupada por responsabilidades
 - [Guia unificada](USO_API.md): puerta de entrada resumida
 

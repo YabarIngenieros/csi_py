@@ -4,11 +4,26 @@ from .unit_tool import Units
 #u = Units(system='MKS')
 u = Units()
 
+
+class _CSIEnum(IntEnum):
+    """Enum CSI con resolución opcional al enum expuesto por la API .NET."""
+
+    @classmethod
+    def resolve(cls, name, api_module=None):
+        member = cls[name] if isinstance(name, str) else cls(name)
+        if api_module is None:
+            return member
+
+        api_enum = getattr(api_module, cls.__name__, None)
+        if api_enum is None:
+            return member
+        return getattr(api_enum, member.name, member)
+
 class EtabsError(Exception):
     """Error general de ETABS."""
     pass
 
-class eUnits(IntEnum):
+class eUnits(_CSIEnum):
     lb_in_F = 1
     lb_ft_F = 2
     kip_in_F = 3
@@ -26,7 +41,7 @@ class eUnits(IntEnum):
     N_cm_C = 15
     Ton_cm_C = 16
 
-class eFramePropType(IntEnum):
+class eFramePropType(_CSIEnum):
     I = 1
     Channel = 2
     T = 3
@@ -75,7 +90,7 @@ class eFramePropType(IntEnum):
     Trapezoidal = 46
     PCCGirderBox = 47
     
-class eMatType(IntEnum):
+class eMatType(_CSIEnum):
     Steel = 1
     Concrete = 2
     NoDesign = 3
@@ -85,7 +100,7 @@ class eMatType(IntEnum):
     Tendon = 7
     Masonry = 8
 
-class eLoadCaseType(IntEnum):
+class eLoadCaseType(_CSIEnum):
     LinearStatic = 1
     NonlinearStatic = 2
     Modal = 3
@@ -101,7 +116,7 @@ class eLoadCaseType(IntEnum):
     LinearStaticMultiStep = 13
     HyperStatic = 14
 
-class eLoadPatternType(IntEnum):
+class eLoadPatternType(_CSIEnum):
     Dead = 1
     SuperDead = 2
     Live = 3
@@ -164,3 +179,28 @@ class eLoadPatternType(IntEnum):
     PatternAuto = 60
     QuakeDrift = 61
     QuakeVerticalOnly = 62
+
+
+class eCNameType(_CSIEnum):
+    LoadCase = 0
+    LoadCombo = 1
+
+
+class eItemTypeElm(_CSIEnum):
+    ObjectElm = 0
+    Element = 1
+    GroupElm = 2
+    SelectionElm = 3
+
+class eItemType(_CSIEnum):
+    Objects = 0
+    Group = 1
+    SelectedObjects = 2
+
+
+class eAreaDesignOrientation(_CSIEnum):
+    Wall = 1
+    Floor = 2
+    Ramp = 3
+    Null = 4
+    Other = 5

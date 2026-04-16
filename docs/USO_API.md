@@ -1,50 +1,60 @@
-# Uso API
+# Guia de uso derivada de la spec
 
-Este proyecto ahora usa una estrategia de documentación compacta:
+Esta guia sigue existiendo como puerta de entrada humana, pero la referencia ya no vive en una sola pagina grande.
 
-- Los docstrings en el código son breves y describen solo el propósito del método.
-- Las notas de uso, ejemplos y convenciones se concentran aquí para no recargar `builder.py`, `extractor.py` y `handler.py`.
+La documentacion de API fue agrupada por responsabilidades para hacerla mas consultable y mas facil de publicar con Sphinx + MyST.
 
-## Conexión
+El detalle de las funciones no abstraidas ya no esta en esta pagina: fue movido a las paginas tematicas, donde ahora queda documentado por grupos de responsabilidad.
 
-`CSIHandler` admite:
+## Ruta recomendada de lectura
 
-- `backend="auto"`: intenta `.NET` primero y luego `comtypes`.
-- `backend="dotnet"`: fuerza `pythonnet`.
-- `backend="comtypes"`: fuerza COM clásico.
+1. [Indice principal](index.md)
+2. [Especificacion](SPEC.md)
+3. [Arquitectura](ARQUITECTURA.md)
+4. [Indice de API](api/index.md)
 
-Ejemplo:
+## Referencia agrupada
+
+- [Conexion y utilidades](api/connection.md)
+- [Tablas y edicion](api/tabular.md)
+- [Extraccion y resultados](api/extraction.md)
+- [Construccion y cargas](api/building.md)
+
+Cada una de esas paginas incluye:
+
+- metodos y propiedades agrupados por tema
+- parametros y comportamiento practico cuando aplica
+- ejemplos minimos de uso
+- notas sobre los puntos mas cercanos a la semantica de CSI
+
+## Flujo minimo
 
 ```python
 from csi_py import CSIHandler
 
 model = CSIHandler(program="ETABS", backend="auto")
-model.connect_open_instance()
+model.open_and_connect(r"C:\Modelos\edificio.edb")
+
+story_forces = model.get_table("Story Forces")
+
+model.save(r"C:\Modelos\edificio_editado.edb")
+model.close()
 ```
 
-## Builder
+## Cuando usar esta pagina
 
-Métodos clave:
+Use esta pagina como mapa.
 
-- `set_table(...)`: envía un `DataFrame` a una tabla editable del modelo.
-- `export_tabular_data(...)`: exporta un diccionario `{tabla: DataFrame}`.
-- `export_tables_batch(...)`: exporta tablas por grupos.
-- `add_frame_section(...)`: despacha la creación según `section_type`.
-- `add_area_section(...)`: despacha la creación según `section_type`.
+Use las paginas agrupadas cuando necesite:
 
-## Extractor
+- ver metodos relacionados entre si
+- navegar como referencia publicada
+- ubicar rapido que capa expone cada capacidad
 
-Métodos clave:
+## Referencias relacionadas
 
-- `get_table(...)`: obtiene tablas de display o edición.
-- `get_modal_periods(...)`: retorna períodos modales.
-- `get_modal_summary(...)`: resume participación modal por modo.
-- `get_modal_displacements(...)`: extrae eigenvectores en nodos.
-- `get_modal_shape(...)`: construye una forma modal lista para visualizar.
-- `get_model_geometry(...)`: arma un paquete de geometría del modelo.
-- `get_load_cases_info(...)`: resume patrones, casos y combinaciones.
-- `get_combo_breakdown(...)`: expande combinaciones de carga recursivamente.
-
-## Criterio
-
-Si un método necesita más explicación que una sola línea, la idea es documentarlo aquí o en `README.md`, no dentro del archivo fuente.
+- [Especificacion](SPEC.md)
+- [Arquitectura](ARQUITECTURA.md)
+- [Indice de API](api/index.md)
+- [Ejemplo de builder](../examples/ejemplo_builder.py)
+- [Chequeo por lotes del extractor](../examples/ejemplo_error_cargas.py)

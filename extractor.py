@@ -24,8 +24,8 @@ class DataExtractor(Handler):
     Reúne propiedades cacheadas y métodos para extraer geometría, cargas y resultados.
     """
     
-    def __init__(self):
-        super().__init__()
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self._stories = None
         
         self._tabular_data = None
@@ -72,7 +72,7 @@ class DataExtractor(Handler):
         """
         MultistepStatic=1 if set_envelopes else 2
         NonlinearStatic=1 if set_envelopes else 2
-        self.model.DataBaseTables.SetOutputOptionsForDisplay(False,False,0,0,True,0,0,True,0,0,MultistepStatic,NonlinearStatic,1,1,2)
+        self.model.DatabaseTables.SetOutputOptionsForDisplay(False,False,0,0,True,0,0,True,0,0,MultistepStatic,NonlinearStatic,1,1,2)
         
     @property
     def available_tables(self):
@@ -171,7 +171,6 @@ class DataExtractor(Handler):
         combo_info = self.model.RespCombo.GetCaseList(combo_name)
         combo_types = combo_info[1]
         combo_cases = combo_info[2]
-        
         unique_cases = []
         
         for c_type,combo_case in zip(combo_types,combo_cases):
@@ -316,6 +315,11 @@ class DataExtractor(Handler):
             self._point_list = list(self.model.PointObj.GetNameList()[1])
         return self._point_list
     
+    @property
+    def base_points(self):
+        base = self.stories[0]
+        return self.model.PointObj.GetNameListOnStory(base)[1]
+    
     def get_point_coordinates(self, point_names):
         """
         Obtiene coordenadas cartesianas de uno o varios puntos.
@@ -420,6 +424,10 @@ class DataExtractor(Handler):
 
         return self._points_reactions
     
+    def get_selected_points(self):
+        selection = self.model.SelectObj.GetSelected()
+        selected = [selection[2][i] for i in range(len(selection[2])) if selection[1][i] == 1]
+        return selected
     
     # ==================== FRAMES ====================
     
@@ -585,7 +593,35 @@ class DataExtractor(Handler):
         if self._frames_forces is None:
             self._frames_forces = self.get_frame_forces()
         return self._frames_forces
+    
+    @property
+    def label_beams(self):
+        label_names = self.frame_label_names
+        return (label_names[label_names['Label'].str.startswith('B')]
+                 ['Label'].unique())
         
+    @property
+    def label_columns(self):
+        label_names = self.frame_label_names
+        return (label_names[label_names['Label'].str.startswith('C')]
+                 ['Label'].unique())
+    
+    def get_beam_forces(self,beams_label=None,cases_and_combos=None):
+        beams_label = format_list_args(beams_label,self.label_beams)
+        cases_and_combos = format_list_args(cases_and_combos,
+                            self.design_cases_and_combos)
+        self.model.DatabaseTables.SetLoadCasesSelectedForDisplay(cases_and_combos)
+        self.model.DatabaseTables.SetLoadCombinationsSelectedForDisplay(cases_and_combos)
+        data_forces = self.get_table('Element Forces - Beams')
+        data_forces = data_forces[data_forces['Beam'].isin(beams_label)]
+        data_forces['_index'] = data_forces.index
+        data_forces = data_forces.sort_values(
+                by=['OutputCase', '_index'],
+                key=lambda col: col.map({nombre: i for i, nombre in enumerate(cases_and_combos)}) if col.name == 'OutputCase' else col
+            ).reset_index(drop=True)
+        data_forces = data_forces.drop(columns='_index')
+        
+        return data_forces
     
     # ==================== AREAS  ====================
     @property
@@ -737,7 +773,7 @@ class DataExtractor(Handler):
         Incluye tipo, sección y coordenadas de sus puntos de contorno.
         """
         if self._area_geometry is None:
-            data = self.model.AreaObj.GetAllAreas() 
+            data = self.model.AreaObj.GetAllAreas()
             area_name = data[1] 
             orientation = data[2] 
             points = [data[5][i+1:j+1] for i,j in 
@@ -767,7 +803,7 @@ class DataExtractor(Handler):
         """Extrae fuerzas internas en áreas."""
         areas = format_list_args(area_name,self.area_list)
         cases_and_combos = format_list_args(cases_and_combos,
-                            self.handler.design_cases_and_combos)
+                            self.design_cases_and_combos)
     
         data = {
             'AreaName': [], 'PointName': [], 'OutputCase': [], 
@@ -780,7 +816,7 @@ class DataExtractor(Handler):
         self.model.View.RefreshView(0, False)
         
         self.model.Results.Setup.DeselectAllCasesAndCombosForOutput()
-        self.handler.set_envelopes_for_dysplay(set_envelopes=False)
+        self.set_envelopes_for_dysplay(set_envelopes=False)
         for case in cases_and_combos:
             self.model.Results.Setup.SetCaseSelectedForOutput(case)
             self.model.Results.Setup.SetComboSelectedForOutput(case)
@@ -873,12 +909,19 @@ class DataExtractor(Handler):
         df = self.get_table('Strip Forces')
         
         if 'Strip' in df.columns:
-            df.rename(columns={'Strip':'StripObject'})
+            df = df.rename(columns={'Strip':'StripObject'})
             
+        required_columns = {'V2', 'M3', 'Station'}
+        if df.empty or not required_columns.issubset(df.columns):
+            return pd.DataFrame()
             
         if strips is not None:
             strips = format_list_args(strips,self.strip_list)
+            if 'StripObject' not in df.columns:
+                return pd.DataFrame()
             df = df[df['StripObject'].isin(strips)]
+            if df.empty:
+                return pd.DataFrame()
             
         df[['V2','M3','Station']] =\
             df[['V2','M3','Station']].astype('float')
@@ -1117,6 +1160,10 @@ class DataExtractor(Handler):
         self.model.DatabaseTables.SetLoadCombinationsSelectedForDisplay(cases_and_combos)
         
         soil_pressures = self.get_table('Soil Pressures')
+        required_columns = {'UniqueName', 'OutputCase', 'SoilPressure', 'GlobalX', 'GlobalY'}
+        if soil_pressures.empty or 'OutputCase' not in soil_pressures.columns:
+            return pd.DataFrame()
+
         soil_pressures['_index'] = soil_pressures.index
         soil_pressures = soil_pressures.sort_values(
                 by=['OutputCase', '_index'],
@@ -1125,6 +1172,8 @@ class DataExtractor(Handler):
         soil_pressures = soil_pressures.drop(columns='_index')
         if 'StepType' in soil_pressures.columns:
             soil_pressures['OutputCase'] = soil_pressures['OutputCase'].astype(str)+' '+soil_pressures['StepType']
+        if not required_columns.issubset(soil_pressures.columns):
+            return pd.DataFrame()
         soil_pressures = soil_pressures[['UniqueName','OutputCase','SoilPressure','GlobalX','GlobalY']]
         soil_pressures[['SoilPressure','GlobalX','GlobalY']] =\
             soil_pressures[['SoilPressure','GlobalX','GlobalY']].astype(float)

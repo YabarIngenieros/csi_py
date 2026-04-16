@@ -7,6 +7,7 @@ from typing import Optional
 
 import psutil
 
+from .api_helpers import CSIAPIHelpers
 
 PROGRAM_INFO = {
     "ETABS": {
@@ -273,7 +274,9 @@ class Handler:
     """
     def __init__(self, program="ETABS", units=u.csi_units, backend="auto", dll_path=None):
         self.program = validate_programs(program)
+        self._raw_model = None
         self.model = None
+        self.api_model = None
         self.object = None
         self.file_path = None
         self.file_name = None
@@ -286,9 +289,12 @@ class Handler:
         self.backend = self.connector.name
         self.helper = self.connector.helper
         self.api_module = getattr(self.connector, "module", None)
+        self.api = CSIAPIHelpers(self)
 
     def _bind_model(self):
-        self.model = self.connector.get_sap_model(self.object)
+        self._raw_model = self.connector.get_sap_model(self.object)
+        self.model = self.api.get_model_proxy()
+        self.api_model = self.model
         self.file_path = self.model.GetModelFilename()
         self.file_name = os.path.basename(self.file_path) if self.file_path else "Untitled"
         self.set_units()
@@ -332,7 +338,9 @@ class Handler:
             self.object = self.connector.create_object_progid()
 
         self.object.ApplicationStart()
-        self.model = self.connector.get_sap_model(self.object)
+        self._raw_model = self.connector.get_sap_model(self.object)
+        self.model = self.api.get_model_proxy()
+        self.api_model = self.model
         self.model.File.OpenFile(file_path)
         self.file_path = file_path
         self.file_name = os.path.basename(self.file_path)
@@ -354,7 +362,9 @@ class Handler:
             self.object = self.connector.create_object_progid()
 
         self.object.ApplicationStart()
-        self.model = self.connector.get_sap_model(self.object)
+        self._raw_model = self.connector.get_sap_model(self.object)
+        self.model = self.api.get_model_proxy()
+        self.api_model = self.model
         self.model.InitializeNewModel()
         self.model.File.NewBlank()
         self.file_path = ""
@@ -383,7 +393,9 @@ class Handler:
             return True
         self.object.ApplicationExit(True)
         self.object = None
+        self._raw_model = None
         self.model = None
+        self.api_model = None
         self.is_connected = False
         print(f"{self.file_name} cerrado")
         return True
@@ -394,7 +406,8 @@ class Handler:
 
     def set_units(self):
         """Establece las unidades activas del modelo según ``self.units``."""
-        self.model.SetPresentUnits(eUnits[self.units])
+        api_module = self.api_module if self.backend == "dotnet" else None
+        self.model.SetPresentUnits(eUnits.resolve(self.units, api_module=api_module))
 
 
 from .extractor import DataExtractor

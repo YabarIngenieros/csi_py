@@ -29,6 +29,7 @@ from .builder import ModelBuilder
 
 __all__ = [
     "CSIHandler",
+    "Handler",
     "get__pids",
     "get_paths",
     "validate_programs",
@@ -45,9 +46,8 @@ __all__ = [
     "__license__",
 ]
 
-Handler = CSIHandler
 CSI = CSIHandler
-
+Handler = CSIHandler
 
 def get_version():
     return __version__

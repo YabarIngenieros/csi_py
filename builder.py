@@ -23,8 +23,8 @@ class ModelBuilder(DataExtractor):
 
     Expone helpers para crear materiales, secciones, objetos y cargas.
     """
-    def __init__(self):
-        super().__init__()
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self._section_definitions_table = None
         self._tee_section_table = None
 
@@ -113,7 +113,7 @@ class ModelBuilder(DataExtractor):
             return 0
         
     # ================== GRIDS ================================
-    def set_grid_sitem(self,X:list,Y:list,spacing=True):
+    def set_grid_system(self,X:list,Y:list,spacing=True):
         """
         Define el sistema de ejes cartesianos del modelo.
 
@@ -145,6 +145,10 @@ class ModelBuilder(DataExtractor):
             table_2.loc[len(table_2)] = row
             
         self.set_table(table_name_2,table_2,version,apply=True)
+
+    def set_grid_sitem(self,X:list,Y:list,spacing=True):
+        """Alias retrocompatible de :meth:`set_grid_system`."""
+        return self.set_grid_system(X, Y, spacing=spacing)
             
         
     # ===================== POINTS =============================
@@ -804,3 +808,5 @@ class ModelBuilder(DataExtractor):
         return groups
     
     
+
+

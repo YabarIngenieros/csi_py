@@ -71,6 +71,15 @@ model = CSIHandler(program="ETABS")
 model.open_and_connect(r"C:\Proyectos\MiModelo.EDB")
 ```
 
+Abrirlo con selector de archivos:
+
+```python
+from csi_py import CSIHandler
+
+model = CSIHandler(program="ETABS")
+model.open_and_connect()
+```
+
 Crear un modelo vacio:
 
 ```python
@@ -110,7 +119,7 @@ Funciones y clases publicas exportadas desde `__init__.py`:
 `CSIHandler` incluye estos metodos base:
 
 - `connect_open_instance(instance_position=None)`
-- `open_and_connect(file_path)`
+- `open_and_connect(file_path=None)`
 - `open_empty_instance(units=None)`
 - `save(model_path)`
 - `close()`

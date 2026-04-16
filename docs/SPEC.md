@@ -108,9 +108,11 @@ Contrato:
 
 ### Apertura de archivo
 
-`open_and_connect(file_path)` debe:
+`open_and_connect(file_path=None)` debe:
 
-- fallar con `FileNotFoundError` si `file_path` no existe
+- abrir un selector de archivos si `file_path` es `None`
+- filtrar el selector por la extension tipica del programa cuando sea posible
+- fallar con `FileNotFoundError` si `file_path` no existe o si no se selecciona archivo
 - abrir el archivo en una instancia nueva del programa CSI
 - dejar al handler en estado `connected`
 

@@ -15,18 +15,21 @@ PROGRAM_INFO = {
         "progid": "CSI.ETABS.API.ETABSObject",
         "module_name": "ETABSv1",
         "dll_name": "ETABSv1.dll",
+        "file_extensions": [("Modelos ETABS", "*.edb")],
     },
     "SAP2000": {
         "exe": "SAP2000.exe",
         "progid": "CSI.SAP2000.API.SapObject",
         "module_name": "SAP2000v1",
         "dll_name": "SAP2000v1.dll",
+        "file_extensions": [("Modelos SAP2000", "*.sdb")],
     },
     "SAFE": {
         "exe": "SAFE.exe",
         "progid": "CSI.SAFE.API.ETABSObject",
         "module_name": "SAFEv1",
         "dll_name": "SAFEv1.dll",
+        "file_extensions": [("Modelos SAFE", "*.fdb")],
     },
 }
 
@@ -132,6 +135,40 @@ def _resolve_dll_path(program: str):
         return None
     dll_path = os.path.join(os.path.dirname(exe_path), _get_program_info(program)["dll_name"])
     return dll_path if os.path.exists(dll_path) else None
+
+
+def _select_model_file(program: str):
+    program = validate_programs(program)
+    filetypes = list(_get_program_info(program).get("file_extensions", []))
+    if filetypes:
+        filetypes.append(("Todos los archivos", "*.*"))
+    else:
+        filetypes = [("Todos los archivos", "*.*")]
+
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+    except Exception as exc:
+        raise RuntimeError(
+            "No se pudo abrir el selector de archivos. "
+            "Instale/habilite tkinter o pase file_path explícitamente."
+        ) from exc
+
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+    try:
+        file_path = filedialog.askopenfilename(
+            title=f"Seleccionar modelo de {program}",
+            filetypes=filetypes,
+        )
+    finally:
+        root.destroy()
+
+    if not file_path:
+        raise FileNotFoundError(f"No se seleccionó ningún archivo de {program}")
+
+    return file_path
 
 
 def _ensure_pythonnet_loaded():
@@ -322,12 +359,17 @@ class Handler:
         print(f"Conectado a {self.file_name} usando backend {self.backend}")
         return True
 
-    def open_and_connect(self, file_path):
+    def open_and_connect(self, file_path=None):
         """
         Abre un archivo de modelo en una nueva instancia y se conecta a él.
 
         Intenta usar el backend configurado para crear la instancia del programa.
+        Si ``file_path`` es ``None``, abre un selector de archivos filtrado por
+        la extensión típica del programa.
         """
+        if file_path is None:
+            file_path = _select_model_file(self.program)
+
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"El archivo no existe: {file_path}")
 

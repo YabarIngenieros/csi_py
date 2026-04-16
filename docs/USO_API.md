@@ -41,6 +41,13 @@ model.save(r"C:\Modelos\edificio_editado.edb")
 model.close()
 ```
 
+Si no quiere pasar la ruta manualmente:
+
+```python
+model = CSIHandler(program="ETABS", backend="auto")
+model.open_and_connect()
+```
+
 ## Cuando usar esta pagina
 
 Use esta pagina como mapa.

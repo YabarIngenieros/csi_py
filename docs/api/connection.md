@@ -113,7 +113,7 @@ Errores esperables:
 - `TypeError` si `instance_position` no es `None` ni entero
 - `ConnectionError` si no hay instancia disponible
 
-### `open_and_connect(file_path)`
+### `open_and_connect(file_path=None)`
 
 Abre un archivo de modelo en una instancia nueva y conecta el handler.
 
@@ -121,11 +121,22 @@ Abre un archivo de modelo en una instancia nueva y conecta el handler.
 model.open_and_connect(r"C:\Modelos\edificio.edb")
 ```
 
+Tambien puede abrir un selector de archivos:
+
+```python
+model.open_and_connect()
+```
+
 Errores esperables:
 
 - `FileNotFoundError` si la ruta no existe
+- `FileNotFoundError` si se cancela el selector
 
 Notas:
+
+- si `file_path` es `None`, abre un File Dialog
+- el dialogo filtra por la extension del programa activo:
+  `*.edb` para ETABS, `*.sdb` para SAP2000 y `*.fdb` para SAFE
 
 - intenta usar el backend configurado para crear la instancia
 - deja la instancia en estado conectado

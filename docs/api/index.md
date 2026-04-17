@@ -31,6 +31,7 @@ direct_csi
 
 ## Referencias relacionadas
 
+- [AI Lookup](../AI_LOOKUP.md)
 - [Especificacion](../SPEC.md)
 - [Arquitectura](../ARQUITECTURA.md)
 - [Guia unificada](../USO_API.md)

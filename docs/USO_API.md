@@ -9,9 +9,10 @@ El detalle de las funciones no abstraidas ya no esta en esta pagina: fue movido 
 ## Ruta recomendada de lectura
 
 1. [Indice principal](index.md)
-2. [Especificacion](SPEC.md)
-3. [Arquitectura](ARQUITECTURA.md)
-4. [Indice de API](api/index.md)
+2. [AI Lookup](AI_LOOKUP.md)
+3. [Especificacion](SPEC.md)
+4. [Arquitectura](ARQUITECTURA.md)
+5. [Indice de API](api/index.md)
 
 ## Referencia agrupada
 
@@ -30,6 +31,10 @@ Cada una de esas paginas incluye:
 Si necesita una lista concentrada de los helpers mas tecnicos y menos abstraidos, use:
 
 - [Metodos poco abstraidos](api/direct_csi.md)
+
+Si necesita encontrar rapido "que metodo hace X", use:
+
+- [AI Lookup](AI_LOOKUP.md)
 
 ## Flujo minimo
 

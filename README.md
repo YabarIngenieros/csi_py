@@ -13,6 +13,7 @@ La libreria expone una sola API de trabajo (`CSIHandler`) que combina:
 
 La documentacion del proyecto ahora sigue un enfoque spec driven:
 
+- el [AI Lookup](docs/AI_LOOKUP.md) ofrece un mapa por intencion y sinonimos
 - la fuente de verdad es la [especificacion](docs/SPEC.md)
 - la [arquitectura](docs/ARQUITECTURA.md) explica como la implementacion cumple la spec
 - el [indice principal](docs/index.md) organiza la documentacion para consulta y publicacion
@@ -210,6 +211,7 @@ La logica de adaptacion esta en [`api_helpers.py`](api_helpers.py).
 
 ## Documentacion incluida
 
+- [AI Lookup](docs/AI_LOOKUP.md)
 - [Indice principal](docs/index.md)
 - [Indice de API](docs/api/index.md)
 - [Especificacion](docs/SPEC.md)

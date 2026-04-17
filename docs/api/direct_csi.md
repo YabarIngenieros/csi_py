@@ -197,6 +197,11 @@ Es un helper integrador, pero sigue muy cerca de CSI porque se apoya en:
 
 Version cacheada de `get_frames_connectivity()`.
 
+Aliases:
+
+- `get_frame_connectivity(...)`
+- `frame_connectivity`
+
 ### `get_beam_forces(beams_label=None, cases_and_combos=None)`
 
 Lee la tabla `Element Forces - Beams`.
@@ -220,6 +225,11 @@ El filtro principal se hace por `Label` de viga.
 
 Version cacheada de `get_beams_connectivity()`.
 
+Aliases:
+
+- `get_beam_connectivity(...)`
+- `beam_connectivity`
+
 ### `get_columns_connectivity(columns_label=None, tol=1e-6)`
 
 Resuelve la conectividad de columnas contra grids y separa la salida en:
@@ -238,6 +248,11 @@ Sigue muy cerca de la semantica CSI porque depende de:
 ### `columns_connectivity`
 
 Version cacheada de `get_columns_connectivity()`.
+
+Aliases:
+
+- `get_column_connectivity(...)`
+- `column_connectivity`
 
 ### `add_frame_distributed_load(frame_name, load_pattern, direction, value, dist_type=1)`
 

@@ -350,6 +350,11 @@ Propiedad cacheada equivalente a `get_frames_connectivity()`.
 df = model.frames_connectivity
 ```
 
+Aliases compatibles:
+
+- `get_frame_connectivity(...)`
+- `frame_connectivity`
+
 ### `get_beams_connectivity(beams_label=None, tol=1e-6)`
 
 Retorna conectividad de vigas y su pertenencia a grid como `DataFrame`.
@@ -383,6 +388,11 @@ Propiedad cacheada equivalente a `get_beams_connectivity()`.
 ```python
 df = model.beams_connectivity
 ```
+
+Aliases compatibles:
+
+- `get_beam_connectivity(...)`
+- `beam_connectivity`
 
 ### `get_columns_connectivity(columns_label=None, tol=1e-6)`
 
@@ -419,6 +429,11 @@ Propiedad cacheada equivalente a `get_columns_connectivity()`.
 ```python
 df = model.columns_connectivity
 ```
+
+Aliases compatibles:
+
+- `get_column_connectivity(...)`
+- `column_connectivity`
 
 ## Areas, losas, muros y decks
 

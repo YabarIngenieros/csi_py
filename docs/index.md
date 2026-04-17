@@ -6,6 +6,7 @@ Documentacion del proyecto organizada para consulta local y publicacion con Sphi
 :maxdepth: 2
 :caption: Contenido
 
+AI_LOOKUP
 SPEC
 ARQUITECTURA
 DEVELOPER
@@ -25,6 +26,7 @@ model = CSIHandler(program="ETABS", backend="auto")
 
 ## Mapa de consulta
 
+- [AI Lookup](AI_LOOKUP.md): mapa por intencion, sinonimos y metodos concretos
 - [Especificacion](SPEC.md): contratos y alcance
 - [Arquitectura](ARQUITECTURA.md): organizacion interna por capas
 - [Developer Guide](DEVELOPER.md): objetos internos, backends y flujo de compatibilidad

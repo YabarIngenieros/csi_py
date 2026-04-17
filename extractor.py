@@ -949,6 +949,15 @@ class DataExtractor(Handler):
             self._beams_connectivity = self.get_beams_connectivity()
         return self._beams_connectivity
 
+    def get_beam_connectivity(self, beams_label=None, tol=1e-6):
+        """Alias de :meth:`get_beams_connectivity`."""
+        return self.get_beams_connectivity(beams_label=beams_label, tol=tol)
+
+    @property
+    def beam_connectivity(self):
+        """Alias de :attr:`beams_connectivity`."""
+        return self.beams_connectivity
+
     def get_frames_connectivity(self, frame_type=None, labels=None, tol=1e-6):
         """
         Retorna una vista conjunta de conectividad para vigas y columnas.
@@ -998,6 +1007,15 @@ class DataExtractor(Handler):
         if self._frames_connectivity is None:
             self._frames_connectivity = self.get_frames_connectivity()
         return self._frames_connectivity
+
+    def get_frame_connectivity(self, frame_type=None, labels=None, tol=1e-6):
+        """Alias de :meth:`get_frames_connectivity`."""
+        return self.get_frames_connectivity(frame_type=frame_type, labels=labels, tol=tol)
+
+    @property
+    def frame_connectivity(self):
+        """Alias de :attr:`frames_connectivity`."""
+        return self.frames_connectivity
 
     def get_columns_connectivity(self, columns_label=None, tol=1e-6):
         """
@@ -1055,6 +1073,15 @@ class DataExtractor(Handler):
         if self._columns_connectivity is None:
             self._columns_connectivity = self.get_columns_connectivity()
         return self._columns_connectivity
+
+    def get_column_connectivity(self, columns_label=None, tol=1e-6):
+        """Alias de :meth:`get_columns_connectivity`."""
+        return self.get_columns_connectivity(columns_label=columns_label, tol=tol)
+
+    @property
+    def column_connectivity(self):
+        """Alias de :attr:`columns_connectivity`."""
+        return self.columns_connectivity
     
     def get_beam_forces(self,beams_label=None,cases_and_combos=None):
         beams_label = format_list_args(beams_label,self.label_beams)

@@ -90,23 +90,26 @@ class DataExtractor(Handler):
         df = df[df['ImportType'].isin([2,3])].reset_index(drop=True)
         return df
     
-    def get_table(self, table_name, set_envelopes=True, runned=False):
+    def get_table(self, table_name, set_envelopes=True, runned=False, definition=False):
         """
         Extrae una tabla de visualización del modelo.
 
         Puede ejecutar el análisis automáticamente si la tabla no tiene resultados.
+        Usar ``definition=True`` para tablas de definición (secciones, materiales, etc.)
+        que no requieren configurar opciones de output ni disparar análisis.
         """
-        self.set_envelopes_for_dysplay(set_envelopes=set_envelopes)
+        if not definition:
+            self.set_envelopes_for_dysplay(set_envelopes=set_envelopes)
         data = self.model.DatabaseTables.GetTableForDisplayArray(
             table_name, FieldKeyList='', GroupName=''
         )
 
         flag = data[-1]
         if flag == 1:
-            if runned == True:
+            if definition or runned:
                 return pd.DataFrame()
             self.model.Analyze.RunAnalysis()
-            return self.get_table(table_name,set_envelopes,runned=True)
+            return self.get_table(table_name, set_envelopes, runned=True)
 
         elif flag == -96:
             raise ValueError(f"La tabla '{table_name}' no existe en el modelo ETABS.")
@@ -670,24 +673,77 @@ class DataExtractor(Handler):
             'R33': result[11]
         }
     
+    # Columnas de dimensiones conocidas por tabla de shape
+    _SHAPE_DIM_COLS = ['t3', 't2', 'tf', 'tw', 't2b', 'tfb', 'dis', 'CornerRad', 'FillMaterial']
+
     def get_frame_section_dimensions(self, get_properties=False):
         """
-        Extrae dimensiones geométricas de las secciones de frame.
+        Extrae dimensiones y metadatos de las secciones de frame desde tablas CSI.
 
-        Si ``get_properties`` es verdadero, agrega propiedades seccionales calculadas.
+        Lee ``Frame Section Property Definitions - Summary`` para obtener el shape
+        y material de cada sección, luego descubre automáticamente todas las tablas
+        ``Frame Section Property Definitions - <Shape>`` disponibles en el modelo
+        para extraer las dimensiones correspondientes (``t3``, ``t2``, ``tf``,
+        ``tw``, ``t2b``, ``tfb``, ``dis``, ``CornerRad``, ``FillMaterial``, etc.).
+        Solo se incluyen las columnas presentes en ``_SHAPE_DIM_COLS``.
+
+        Si ``get_properties`` es ``True``, agrega propiedades seccionales calculadas
+        vía ``GetSectProps`` (inercias, módulos resistentes, radios de giro, etc.).
+
+        Returns
+        -------
+        pd.DataFrame
+            Columnas: ``SectionName``, ``Shape``, ``Material``, dimensiones
+            presentes según el shape, y opcionalmente las propiedades calculadas.
         """
-        
-        columns = ['SectionName', 'PropType', 't3', 't2', 'tf', 'tw', 't2b', 'tfb', 'Area']
-        data = self.model.PropFrame.GetAllFrameProperties_2()[1:-1]
-        data = pd.DataFrame(np.array(data).T, columns=columns)
-        data['SectionType'] = data['PropType'].astype(int).map(lambda x: eFramePropType(x).name)
-        data = data[['SectionName', 'SectionType', 't3', 't2', 'tf', 'tw', 't2b', 'tfb', 'Area']]
-        
+        summary_raw = self.get_table(
+            'Frame Section Property Definitions - Summary', definition=True
+        )
+        col_map = {c.lower().replace(' ', ''): c for c in summary_raw.columns}
+        name_col     = col_map.get('sectionname') or col_map.get('name')
+        shape_col    = col_map.get('shape')
+        material_col = col_map.get('material') or col_map.get('matprop')
+        missing = [k for k, v in {'SectionName': name_col, 'Shape': shape_col, 'Material': material_col}.items() if v is None]
+        if missing:
+            raise KeyError(f"Columnas no encontradas en 'Frame Section Property Definitions - Summary': {missing}. Columnas disponibles: {list(summary_raw.columns)}")
+        summary = summary_raw[[name_col, shape_col, material_col]].rename(
+            columns={name_col: 'SectionName', shape_col: 'Shape', material_col: 'Material'}
+        )
+
+        prefix = 'Frame Section Property Definitions - '
+        shape_tables = [t for t in self.available_tables['Table']
+                        if t.startswith(prefix) and t != f'{prefix}Summary']
+
+        dims_by_section = {}
+        for table_name in shape_tables:
+            try:
+                tbl = self.get_table(table_name, definition=True)
+            except (ValueError, EtabsError):
+                continue
+            if tbl.empty or 'Name' not in tbl.columns:
+                continue
+            available = [c for c in self._SHAPE_DIM_COLS if c in tbl.columns]
+            if not available:
+                continue
+            for _, row in tbl[['Name'] + available].iterrows():
+                dims_by_section[row['Name']] = {c: row[c] for c in available}
+
+        records = []
+        for _, row in summary.iterrows():
+            rec = {'SectionName': row['SectionName'],
+                   'Shape': row['Shape'],
+                   'Material': row['Material']}
+            rec.update(dims_by_section.get(row['SectionName'], {}))
+            records.append(rec)
+
+        data = pd.DataFrame(records)
+
         if get_properties:
             df_props = pd.DataFrame(
                 data['SectionName'].apply(self.get_frame_section_properties).tolist()
             )
             data = data.merge(df_props, on='SectionName', how='left')
+
         return data
     
     @property
@@ -697,45 +753,87 @@ class DataExtractor(Handler):
                 self.get_frame_section_dimensions(get_properties=True)
         return self._frame_sections_data
 
-    def get_section_by_label(self, label):
-        """
-        Retorna el tipo y datos completos de la sección asignada a los frames
-        con el label dado.
+    _SECTION_PROP_COLS = ['Area', 'As2', 'As3', 'Torsion', 'I22', 'I33',
+                          'S22', 'S33', 'Z22', 'Z33', 'R22', 'R33']
 
-        Combina dimensiones geométricas y propiedades calculadas (inercia,
-        área, módulos resistentes, etc.) de ``frame_sections_data``.
+    def get_section_by_label(self, label, story=None):
+        """
+        Retorna las propiedades de sección de los frames con el label dado.
+
+        Consulta ``frame_sections_data`` (cacheado) para obtener shape, dimensiones,
+        material y propiedades calculadas de cada sección distinta asociada al label.
+        Si el mismo label usa secciones distintas en distintos pisos, cada sección
+        aparece como clave independiente con su propia lista ``'stories'``.
 
         Parameters
         ----------
         label : str or list of str
             Label o lista de labels de frame (columna ``Label`` de
             ``frames_properties``).
+        story : str or list of str, optional
+            Restringe la búsqueda a uno o varios pisos. Si es ``None`` se
+            consideran todos los pisos.
 
         Returns
         -------
-        pd.DataFrame
-            Filas de ``frame_sections_data`` correspondientes a las secciones
-            usadas por los frames indicados, con una columna ``Label`` agregada
-            al inicio para referencia.
+        dict
+            ``{section_name: {'Shape', 'dimensions', 'properties', 'material', 'stories'}}``
+
+            - ``Shape`` (str): nombre del shape según tablas CSI
+              (p.ej. ``'Steel I/Wide Flange'``, ``'Filled Steel Tube'``).
+            - ``dimensions`` (dict): dimensiones del shape — columnas presentes
+              en la tabla CSI del shape (``t3``, ``t2``, ``tf``, ``tw``,
+              ``t2b``, ``tfb``, ``dis``, ``CornerRad``, ``FillMaterial``, etc.).
+            - ``properties`` (dict): propiedades calculadas — ``Area``,
+              ``As2``, ``As3``, ``Torsion``, ``I22``, ``I33``, ``S22``,
+              ``S33``, ``Z22``, ``Z33``, ``R22``, ``R33``.
+            - ``material`` (dict): material estructural — ``name``, ``Type``,
+              ``SymmetricType``, ``E``, ``U``, ``A``, ``G``.
+            - ``stories`` (list): pisos en que el label usa esa sección.
+
+            Retorna ``{}`` si el label no existe o no hay coincidencias con
+            el filtro de piso.
         """
         labels = format_list_args(label, check_values=False)
+        stories = format_list_args(story, check_values=False)
+
         fp = self.frames_properties
         mask = fp['Label'].isin(labels)
+        if stories:
+            mask &= fp['Story'].isin(stories)
         if not mask.any():
-            return pd.DataFrame()
+            return {}
 
-        section_names = fp.loc[mask, 'Section'].unique().tolist()
-        result = self.frame_sections_data[
-            self.frame_sections_data['SectionName'].isin(section_names)
-        ].copy()
+        pairs = fp.loc[mask, ['Story', 'Section']].drop_duplicates()
+        sections_data = self.frame_sections_data.set_index('SectionName')
+        mat_props = self.material_properties.set_index('Material')
 
-        label_map = (
-            fp.loc[mask, ['Label', 'Section']]
-            .drop_duplicates()
-            .rename(columns={'Section': 'SectionName'})
-        )
-        result = label_map.merge(result, on='SectionName', how='left')
-        return result.reset_index(drop=True)
+        non_dim_cols = {'Shape', 'Material', 'SectionName'} | set(self._SECTION_PROP_COLS)
+
+        sections: dict = {}
+        for story_val, section_name in pairs.itertuples(index=False):
+            if section_name not in sections_data.index:
+                continue
+
+            if section_name not in sections:
+                row = sections_data.loc[section_name]
+                shape = row.get('Shape', '')
+                mat_name = row.get('Material')
+                mat_row = mat_props.loc[mat_name] if mat_name in mat_props.index else None
+                material = {'name': mat_name}
+                if mat_row is not None:
+                    material.update({c: mat_row[c] for c in ['Type', 'SymmetricType', 'E', 'U', 'A', 'G']})
+
+                sections[section_name] = {
+                    'Shape': shape,
+                    'dimensions': {c: row[c] for c in row.index if c not in non_dim_cols and pd.notna(row[c]) and row[c] != ''},
+                    'properties': {c: row[c] for c in self._SECTION_PROP_COLS if c in row.index},
+                    'material': material,
+                    'stories': [],
+                }
+            sections[section_name]['stories'].append(story_val)
+
+        return sections
 
     @property
     def frame_list(self):

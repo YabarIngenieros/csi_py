@@ -231,6 +231,7 @@ Notas:
 - `columns_connectivity`
 - `label_beams`
 - `label_columns`
+- `get_section_by_label(label, story=None)`
 
 ```python
 frames = model.frame_list
@@ -251,16 +252,53 @@ Retorno:
 
 ### `get_frame_section_dimensions(get_properties=False)`
 
-Retorna dimensiones de todas las secciones frame.
+Extrae dimensiones y metadatos de todas las secciones frame desde tablas CSI.
+
+Lee `Frame Section Property Definitions - Summary` para obtener shape y material,
+luego descubre automáticamente todas las tablas `Frame Section Property Definitions - <Shape>`
+disponibles en el modelo para extraer las dimensiones de cada tipo.
 
 ```python
 df = model.get_frame_section_dimensions(get_properties=True)
 ```
 
-Uso:
+- `False`: shape, material y dimensiones geométricas
+- `True`: agrega propiedades calculadas (inercias, módulos resistentes, radios de giro)
 
-- `False`: solo geometria y tipo de seccion
-- `True`: agrega propiedades calculadas
+Retorno — `pd.DataFrame` con columnas: `SectionName`, `Shape`, `Material`,
+dimensiones según el shape (`t3`, `t2`, `tf`, `tw`, `t2b`, `tfb`, `dis`, `CornerRad`, `FillMaterial`, ...)
+y opcionalmente las propiedades calculadas.
+
+### `get_section_by_label(label, story=None)`
+
+Retorna las propiedades de sección de los frames con el label dado.
+
+```python
+# todos los pisos
+result = model.get_section_by_label('C1')
+
+# filtrado por piso
+result = model.get_section_by_label('C1', story='Story3')
+result = model.get_section_by_label(['C1', 'C2'], story=['Story1', 'Story2'])
+```
+
+Retorno — `dict` con estructura `{section_name: {...}}`:
+
+```python
+{
+  'W14x48': {
+    'Shape': 'Steel I/Wide Flange',
+    'dimensions': {'t3': 0.35, 't2': 0.20, 'tf': 0.015, 'tw': 0.009},
+    'properties': {'Area': 0.0091, 'I33': 2.45e-4, 'I22': 8.1e-6, ...},
+    'material': {'name': 'A992Fy50', 'E': 2e11, 'U': 0.3, 'A': 1.17e-5, 'G': 7.7e10, ...},
+    'stories': ['Story1', 'Story2', 'Story3']
+  }
+}
+```
+
+- Si el label usa la misma sección en todos los pisos, `stories` lista todos los pisos.
+- Si usa secciones distintas por piso, cada sección aparece como clave separada con su propia lista `stories`.
+- Retorna `{}` si el label no existe o no hay coincidencias con el filtro de piso.
 
 ### `get_frame_section(frame_name)`
 

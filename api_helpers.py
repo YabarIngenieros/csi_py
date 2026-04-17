@@ -1220,3 +1220,4 @@ class CSIAPIHelpers:
         if args or kwargs:
             return func(material_name, *args, **kwargs)
         return func(material_name)
+

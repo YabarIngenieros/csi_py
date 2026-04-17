@@ -27,6 +27,8 @@ class DataExtractor(Handler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._stories = None
+        self._grid_system_names = None
+        self._grid_lines = None
         
         self._tabular_data = None
         
@@ -134,6 +136,191 @@ class DataExtractor(Handler):
                 table_data[table] = data
             self._tabular_data = table_data
         return self._tabular_data
+
+    # ==================== GRIDS ====================
+
+    @property
+    def grid_system_names(self):
+        if self._grid_system_names is None:
+            names = []
+            try:
+                table = self.get_table('Grid Definitions - Grid Lines', set_envelopes=False)
+                for column in ('GridSystem', 'Grid System', 'GridSys', 'Name', 'Grid System Name'):
+                    if column in table.columns:
+                        names = table[column].tolist()
+                        break
+            except Exception:
+                try:
+                    names = list(self.model.GridSys.GetNameList()[1])
+                except Exception:
+                    table = self.get_table('Grid Definitions - General', set_envelopes=False)
+                    for column in ('Name', 'Grid System', 'GridSys', 'Grid System Name'):
+                        if column in table.columns:
+                            names = table[column].tolist()
+                            break
+            self._grid_system_names = list(set(str(name).strip() for name in names if str(name).strip()))
+        return self._grid_system_names
+
+    def get_grid_system(self, grid_system_name=None):
+        """
+        Extrae líneas de grid del modelo como ``DataFrame``.
+
+        Si ``grid_system_name`` es ``None``, retorna todas las líneas.
+        Si se indica un nombre, filtra por ese sistema.
+        """
+        lines = self.grid_lines.copy()
+        if grid_system_name is None:
+            return lines.reset_index(drop=True)
+
+        if not isinstance(grid_system_name, str) or not grid_system_name.strip():
+            raise ValueError("Debe indicar un nombre de grid válido.")
+
+        grid_system_name = grid_system_name.strip()
+        lines = lines[lines['GridSystem'] == grid_system_name].reset_index(drop=True)
+        if lines.empty:
+            raise ValueError(f"El grid system '{grid_system_name}' no existe en el modelo.")
+        return lines
+
+    @property
+    def grid_lines(self):
+        """
+        Retorna todas las líneas de grid de todos los sistemas del modelo.
+        """
+        if self._grid_lines is None:
+            try:
+                raw = self.get_table('Grid Definitions - Grid Lines', set_envelopes=False).copy()
+                self._grid_lines = self._normalize_grid_lines_table(raw)
+            except Exception:
+                frames = [
+                    self._grid_system_to_lines(self._get_grid_system_api(grid_name))
+                    for grid_name in self.grid_system_names
+                ]
+                frames = [frame for frame in frames if not frame.empty]
+                if frames:
+                    self._grid_lines = pd.concat(frames, ignore_index=True)
+                else:
+                    self._grid_lines = pd.DataFrame(columns=[
+                        'GridSystem', 'Axis', 'GridLineID', 'Ordinate',
+                        'Visible', 'BubbleLoc', 'Xo', 'Yo', 'RZ', 'GridSysType'
+                    ])
+        return self._grid_lines
+
+    def _normalize_grid_lines_table(self, table):
+        columns = {column.lower().strip(): column for column in table.columns}
+
+        def pick_column(*names):
+            for name in names:
+                key = name.lower().strip()
+                if key in columns:
+                    return columns[key]
+            return None
+
+        grid_system_col = pick_column('GridSystem', 'Grid System', 'GridSys', 'Name')
+        line_type_col = pick_column('LineType', 'GridLineType', 'Grid Line Type')
+        grid_line_id_col = pick_column('GridLineID', 'Grid Line ID', 'ID')
+        ordinate_col = pick_column('Ordinate')
+        visible_col = pick_column('Visible')
+        bubble_col = pick_column('BubbleLoc', 'Bubble Location', 'Bubble')
+
+        if grid_system_col is None or line_type_col is None or grid_line_id_col is None or ordinate_col is None:
+            raise ValueError("La tabla 'Grid Definitions - Grid Lines' no tiene las columnas esperadas.")
+
+        data = pd.DataFrame({
+            'GridSystem': table[grid_system_col].astype(str).str.strip(),
+            'Axis': table[line_type_col].map(self._parse_grid_axis),
+            'GridLineID': table[grid_line_id_col].astype(str).str.strip(),
+            'Ordinate': pd.to_numeric(table[ordinate_col], errors='coerce'),
+            'Visible': table[visible_col].map(self._parse_grid_visible) if visible_col else True,
+            'BubbleLoc': table[bubble_col].astype(str).str.strip() if bubble_col else '',
+        })
+
+        data = data[data['GridSystem'] != ''].reset_index(drop=True)
+        data['Axis'] = data['Axis'].fillna('')
+        data['GridSysType'] = data['Axis'].map(lambda axis: 'Cartesian' if axis in ('X', 'Y') else '')
+        data['Xo'] = 0.0
+        data['Yo'] = 0.0
+        data['RZ'] = 0.0
+        return data[[
+            'GridSystem', 'Axis', 'GridLineID', 'Ordinate',
+            'Visible', 'BubbleLoc', 'Xo', 'Yo', 'RZ', 'GridSysType'
+        ]]
+
+    def _parse_grid_axis(self, value):
+        text = str(value).strip().upper()
+        if text.startswith('X'):
+            return 'X'
+        if text.startswith('Y'):
+            return 'Y'
+        if 'X' in text and 'CARTESIAN' in text:
+            return 'X'
+        if 'Y' in text and 'CARTESIAN' in text:
+            return 'Y'
+        return text
+
+    def _parse_grid_visible(self, value):
+        if isinstance(value, bool):
+            return value
+        text = str(value).strip().lower()
+        if text in ('yes', 'true', '1', 'si', 'sí'):
+            return True
+        if text in ('no', 'false', '0'):
+            return False
+        return bool(value)
+
+    def _get_grid_system_api(self, grid_system_name):
+        data = self.model.GridSys.GetGridSys_2(grid_system_name)
+        if data[-1] != 0:
+            raise EtabsError(
+                f"Error al extraer el grid system '{grid_system_name}', flag devuelto {data[-1]}"
+            )
+        return {
+            'Name': grid_system_name,
+            'Xo': float(data[0]),
+            'Yo': float(data[1]),
+            'RZ': float(data[2]),
+            'GridSysType': data[3],
+            'NumXLines': int(data[4]),
+            'NumYLines': int(data[5]),
+            'GridLineIDX': tuple(data[6]),
+            'GridLineIDY': tuple(data[7]),
+            'OrdinateX': tuple(data[8]),
+            'OrdinateY': tuple(data[9]),
+            'VisibleX': tuple(data[10]),
+            'VisibleY': tuple(data[11]),
+            'BubbleLocX': tuple(data[12]),
+            'BubbleLocY': tuple(data[13]),
+        }
+
+    def _grid_system_to_lines(self, grid_data):
+        x_lines = pd.DataFrame({
+            'GridSystem': grid_data['Name'],
+            'Axis': 'X',
+            'GridLineID': list(grid_data['GridLineIDX'])[:grid_data['NumXLines']],
+            'Ordinate': list(grid_data['OrdinateX'])[:grid_data['NumXLines']],
+            'Visible': list(grid_data['VisibleX'])[:grid_data['NumXLines']],
+            'BubbleLoc': list(grid_data['BubbleLocX'])[:grid_data['NumXLines']],
+        })
+        y_lines = pd.DataFrame({
+            'GridSystem': grid_data['Name'],
+            'Axis': 'Y',
+            'GridLineID': list(grid_data['GridLineIDY'])[:grid_data['NumYLines']],
+            'Ordinate': list(grid_data['OrdinateY'])[:grid_data['NumYLines']],
+            'Visible': list(grid_data['VisibleY'])[:grid_data['NumYLines']],
+            'BubbleLoc': list(grid_data['BubbleLocY'])[:grid_data['NumYLines']],
+        })
+        lines = pd.concat([x_lines, y_lines], ignore_index=True)
+        if lines.empty:
+            return pd.DataFrame(columns=[
+                'GridSystem', 'Axis', 'GridLineID', 'Ordinate',
+                'Visible', 'BubbleLoc', 'Xo', 'Yo', 'RZ', 'GridSysType'
+            ])
+        lines['Ordinate'] = lines['Ordinate'].astype(float)
+        lines['Visible'] = lines['Visible'].astype(bool)
+        lines['Xo'] = grid_data['Xo']
+        lines['Yo'] = grid_data['Yo']
+        lines['RZ'] = grid_data['RZ']
+        lines['GridSysType'] = grid_data['GridSysType']
+        return lines.reset_index(drop=True)
         
     
     # ==================== LOADS ====================

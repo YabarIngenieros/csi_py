@@ -194,6 +194,8 @@ class CSIAPIHelpers:
             "Analyze.RunAnalysis": self._wrap_run_analysis,
             "Story.GetStories": self._wrap_get_stories,
             "Story.GetHeight": self._wrap_get_story_height,
+            "GridSys.GetNameList": self._wrap_get_name_list,
+            "GridSys.GetGridSys_2": self._wrap_get_grid_sys_2,
             "PropMaterial.GetMPIsotropic": self._wrap_get_mpi_isotropic,
             "PropMaterial.GetMPOrthotropic": self._wrap_get_mp_orthotropic,
             "PropMaterial.GetMPAnisotropic": self._wrap_get_mp_anisotropic,
@@ -1144,6 +1146,47 @@ class CSIAPIHelpers:
         if args or kwargs:
             return func(story_name, *args, **kwargs)
         return func(story_name)
+
+    def _wrap_get_grid_sys_2(self, func, name, *args, **kwargs):
+        if self.backend == "dotnet":
+            result = func(
+                name,
+                0.0,
+                0.0,
+                0.0,
+                "",
+                0,
+                0,
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+            )
+            normalized = self.normalize_api_result(result)
+            return (
+                self._as_float(self._item(normalized, 0)),
+                self._as_float(self._item(normalized, 1)),
+                self._as_float(self._item(normalized, 2)),
+                self._item(normalized, 3, ""),
+                self._as_int(self._item(normalized, 4)),
+                self._as_int(self._item(normalized, 5)),
+                tuple(self._item(normalized, 6, ())),
+                tuple(self._item(normalized, 7, ())),
+                tuple(self._as_float(item) for item in self._item(normalized, 8, ())),
+                tuple(self._as_float(item) for item in self._item(normalized, 9, ())),
+                tuple(bool(item) for item in self._item(normalized, 10, ())),
+                tuple(bool(item) for item in self._item(normalized, 11, ())),
+                tuple(self._item(normalized, 12, ())),
+                tuple(self._item(normalized, 13, ())),
+                self._as_int(self._item(normalized, 14)),
+            )
+        if args or kwargs:
+            return func(name, *args, **kwargs)
+        return func(name)
 
     def _wrap_get_mpi_isotropic(self, func, material_name, *args, **kwargs):
         if self.backend == "dotnet":

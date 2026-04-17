@@ -27,6 +27,10 @@ Cada una de esas paginas incluye:
 - ejemplos minimos de uso
 - notas sobre los puntos mas cercanos a la semantica de CSI
 
+Si necesita una lista concentrada de los helpers mas tecnicos y menos abstraidos, use:
+
+- [Metodos poco abstraidos](api/direct_csi.md)
+
 ## Flujo minimo
 
 ```python

@@ -171,6 +171,51 @@ Retorna los puntos seleccionados actualmente en la interfaz CSI.
 selected = model.get_selected_points()
 ```
 
+## Grids
+
+### Propiedades relacionadas
+
+- `grid_system_names`
+- `grid_lines`
+
+```python
+names = model.grid_system_names
+lines = model.grid_lines
+```
+
+### `get_grid_system(grid_system_name=None)`
+
+Retorna líneas de grid como `DataFrame`.
+
+```python
+all_grids = model.get_grid_system()
+g1 = model.get_grid_system("G1")
+```
+
+Retorno:
+
+- cuando `grid_system_name` es `None`, devuelve todas las líneas de todos los sistemas
+- cuando se indica un nombre, filtra por ese sistema
+
+Columnas esperadas:
+
+- `GridSystem`
+- `Axis`
+- `GridLineID`
+- `Ordinate`
+- `Visible`
+- `BubbleLoc`
+- `Xo`
+- `Yo`
+- `RZ`
+- `GridSysType`
+
+Notas:
+
+- usa como fuente principal la tabla `Grid Definitions - Grid Lines`
+- mantiene una ruta de respaldo con la API nativa cuando la tabla no está disponible
+- es la base prevista para resolver pertenencia de vigas a grids
+
 ## Frames
 
 ### Propiedades relacionadas

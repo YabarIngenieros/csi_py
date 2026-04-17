@@ -10,6 +10,7 @@ connection
 tabular
 extraction
 building
+direct_csi
 ```
 
 ## Vista general
@@ -26,6 +27,7 @@ building
 - [Tablas y edicion](tabular.md)
 - [Extraccion y resultados](extraction.md)
 - [Construccion y cargas](building.md)
+- [Metodos poco abstraidos](direct_csi.md)
 
 ## Referencias relacionadas
 

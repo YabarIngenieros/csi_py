@@ -29,6 +29,7 @@ model = CSIHandler(program="ETABS", backend="auto")
 - [Arquitectura](ARQUITECTURA.md): organizacion interna por capas
 - [Developer Guide](DEVELOPER.md): objetos internos, backends y flujo de compatibilidad
 - [Indice de API](api/index.md): referencia agrupada por responsabilidades
+- [Metodos poco abstraidos](api/direct_csi.md): referencia de helpers cercanos a la semantica CSI
 - [Guia unificada](USO_API.md): puerta de entrada resumida
 
 ## Criterio editorial

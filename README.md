@@ -134,6 +134,7 @@ Grupos principales disponibles en `extractor.py`:
 - cargas: `cases`, `combos`, `get_combo_cases()`, `get_load_cases_info()`, `get_combo_breakdown()`
 - materiales: `material_list`, `get_material_properties()`
 - puntos: `point_list`, `get_point_coordinates()`, `get_point_restraints()`, `get_point_reactions()`
+- grids: `grid_system_names`, `grid_lines`, `get_grid_system()`
 - frames: `frame_list`, `frame_sections_data`, `get_frame_forces()`
 - areas: `area_list`, `area_geometry`, `get_area_forces()`
 - muros y pisos: `wall_list`, `floor_list`, `pier_forces`, `story_forces`, `story_drifts`
@@ -181,6 +182,7 @@ model = CSIHandler(program="ETABS")
 model.connect_open_instance()
 
 periods = model.get_modal_periods()
+grids = model.get_grid_system()
 geometry = model.get_model_geometry()
 loads = model.get_load_cases_info()
 ```

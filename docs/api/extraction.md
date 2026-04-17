@@ -226,6 +226,7 @@ Notas:
 - `frame_label_names`
 - `frames_properties`
 - `frames_forces`
+- `beams_connectivity`
 - `label_beams`
 - `label_columns`
 
@@ -307,6 +308,39 @@ Extrae la tabla `Element Forces - Beams`, filtrando por etiqueta de viga.
 
 ```python
 beam_forces = model.get_beam_forces(beams_label=["B1", "B2"])
+```
+
+### `get_beams_connectivity(beam_names=None, tol=1e-6)`
+
+Retorna conectividad de vigas y su pertenencia a grid como `DataFrame`.
+
+```python
+all_beams = model.get_beams_connectivity()
+subset = model.get_beams_connectivity(["45", "46"])
+```
+
+Columnas:
+
+- `Beam`
+- `Label`
+- `Story`
+- `Section`
+- `point_i`
+- `point_j`
+- `Grid`
+
+Notas:
+
+- una viga pertenece a un grid solo si ambos puntos extremos caen sobre la misma línea
+- si no existe un grid común, `Grid` se devuelve como cadena vacía
+- la pertenencia usa `grid_lines` y soporta líneas cartesianas y líneas generales cuando la tabla trae geometría
+
+### `beams_connectivity`
+
+Propiedad cacheada equivalente a `get_beams_connectivity()`.
+
+```python
+df = model.beams_connectivity
 ```
 
 ## Areas, losas, muros y decks

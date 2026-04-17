@@ -135,7 +135,7 @@ Grupos principales disponibles en `extractor.py`:
 - materiales: `material_list`, `get_material_properties()`
 - puntos: `point_list`, `get_point_coordinates()`, `get_point_restraints()`, `get_point_reactions()`
 - grids: `grid_system_names`, `grid_lines`, `get_grid_system()`
-- frames: `frame_list`, `frame_sections_data`, `get_frame_forces()`
+- frames: `frame_list`, `frame_sections_data`, `get_frame_forces()`, `get_beams_connectivity()`
 - areas: `area_list`, `area_geometry`, `get_area_forces()`
 - muros y pisos: `wall_list`, `floor_list`, `pier_forces`, `story_forces`, `story_drifts`
 - analisis modal: `get_modal_data()`, `get_modal_periods()`, `get_modal_summary()`, `get_modal_displacements()`, `get_modal_shape()`

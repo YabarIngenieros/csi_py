@@ -54,6 +54,7 @@ class DataExtractor(Handler):
         self._frame_label_names = None
         self._frames_properties = None
         self._frames_forces = None
+        self._beams_connectivity = None
         
         self._wall_sections_data = None
         self._slab_sections_data = None
@@ -200,8 +201,9 @@ class DataExtractor(Handler):
                     self._grid_lines = pd.concat(frames, ignore_index=True)
                 else:
                     self._grid_lines = pd.DataFrame(columns=[
-                        'GridSystem', 'Axis', 'GridLineID', 'Ordinate',
-                        'Visible', 'BubbleLoc', 'Xo', 'Yo', 'RZ', 'GridSysType'
+                        'GridSystem', 'Axis', 'LineType', 'GridLineID', 'Ordinate',
+                        'Visible', 'BubbleLoc', 'X1', 'Y1', 'X2', 'Y2',
+                        'Xo', 'Yo', 'RZ', 'GridSysType'
                     ])
         return self._grid_lines
 
@@ -221,6 +223,10 @@ class DataExtractor(Handler):
         ordinate_col = pick_column('Ordinate')
         visible_col = pick_column('Visible')
         bubble_col = pick_column('BubbleLoc', 'Bubble Location', 'Bubble')
+        x1_col = pick_column('X1', 'X Start', 'Start X')
+        y1_col = pick_column('Y1', 'Y Start', 'Start Y')
+        x2_col = pick_column('X2', 'X End', 'End X')
+        y2_col = pick_column('Y2', 'Y End', 'End Y')
 
         if grid_system_col is None or line_type_col is None or grid_line_id_col is None or ordinate_col is None:
             raise ValueError("La tabla 'Grid Definitions - Grid Lines' no tiene las columnas esperadas.")
@@ -228,10 +234,15 @@ class DataExtractor(Handler):
         data = pd.DataFrame({
             'GridSystem': table[grid_system_col].astype(str).str.strip(),
             'Axis': table[line_type_col].map(self._parse_grid_axis),
+            'LineType': table[line_type_col].astype(str).str.strip(),
             'GridLineID': table[grid_line_id_col].astype(str).str.strip(),
             'Ordinate': pd.to_numeric(table[ordinate_col], errors='coerce'),
             'Visible': table[visible_col].map(self._parse_grid_visible) if visible_col else True,
             'BubbleLoc': table[bubble_col].astype(str).str.strip() if bubble_col else '',
+            'X1': pd.to_numeric(table[x1_col], errors='coerce') if x1_col else np.nan,
+            'Y1': pd.to_numeric(table[y1_col], errors='coerce') if y1_col else np.nan,
+            'X2': pd.to_numeric(table[x2_col], errors='coerce') if x2_col else np.nan,
+            'Y2': pd.to_numeric(table[y2_col], errors='coerce') if y2_col else np.nan,
         })
 
         data = data[data['GridSystem'] != ''].reset_index(drop=True)
@@ -241,8 +252,9 @@ class DataExtractor(Handler):
         data['Yo'] = 0.0
         data['RZ'] = 0.0
         return data[[
-            'GridSystem', 'Axis', 'GridLineID', 'Ordinate',
-            'Visible', 'BubbleLoc', 'Xo', 'Yo', 'RZ', 'GridSysType'
+            'GridSystem', 'Axis', 'LineType', 'GridLineID', 'Ordinate',
+            'Visible', 'BubbleLoc', 'X1', 'Y1', 'X2', 'Y2',
+            'Xo', 'Yo', 'RZ', 'GridSysType'
         ]]
 
     def _parse_grid_axis(self, value):
@@ -295,24 +307,35 @@ class DataExtractor(Handler):
         x_lines = pd.DataFrame({
             'GridSystem': grid_data['Name'],
             'Axis': 'X',
+            'LineType': 'X (Cartesian)',
             'GridLineID': list(grid_data['GridLineIDX'])[:grid_data['NumXLines']],
             'Ordinate': list(grid_data['OrdinateX'])[:grid_data['NumXLines']],
             'Visible': list(grid_data['VisibleX'])[:grid_data['NumXLines']],
             'BubbleLoc': list(grid_data['BubbleLocX'])[:grid_data['NumXLines']],
+            'X1': np.nan,
+            'Y1': np.nan,
+            'X2': np.nan,
+            'Y2': np.nan,
         })
         y_lines = pd.DataFrame({
             'GridSystem': grid_data['Name'],
             'Axis': 'Y',
+            'LineType': 'Y (Cartesian)',
             'GridLineID': list(grid_data['GridLineIDY'])[:grid_data['NumYLines']],
             'Ordinate': list(grid_data['OrdinateY'])[:grid_data['NumYLines']],
             'Visible': list(grid_data['VisibleY'])[:grid_data['NumYLines']],
             'BubbleLoc': list(grid_data['BubbleLocY'])[:grid_data['NumYLines']],
+            'X1': np.nan,
+            'Y1': np.nan,
+            'X2': np.nan,
+            'Y2': np.nan,
         })
         lines = pd.concat([x_lines, y_lines], ignore_index=True)
         if lines.empty:
             return pd.DataFrame(columns=[
-                'GridSystem', 'Axis', 'GridLineID', 'Ordinate',
-                'Visible', 'BubbleLoc', 'Xo', 'Yo', 'RZ', 'GridSysType'
+                'GridSystem', 'Axis', 'LineType', 'GridLineID', 'Ordinate',
+                'Visible', 'BubbleLoc', 'X1', 'Y1', 'X2', 'Y2',
+                'Xo', 'Yo', 'RZ', 'GridSysType'
             ])
         lines['Ordinate'] = lines['Ordinate'].astype(float)
         lines['Visible'] = lines['Visible'].astype(bool)
@@ -792,6 +815,99 @@ class DataExtractor(Handler):
         label_names = self.frame_label_names
         return (label_names[label_names['Label'].str.startswith('C')]
                  ['Label'].unique())
+
+    def _point_on_grid_line(self, point_xy, grid_line, tol=1e-6):
+        x, y = point_xy
+        axis = str(grid_line.get('Axis', '')).strip().upper()
+        ordinate = grid_line.get('Ordinate', np.nan)
+
+        if axis == 'X' and pd.notna(ordinate):
+            return abs(float(x) - float(ordinate)) <= tol
+        if axis == 'Y' and pd.notna(ordinate):
+            return abs(float(y) - float(ordinate)) <= tol
+
+        x1 = grid_line.get('X1', np.nan)
+        y1 = grid_line.get('Y1', np.nan)
+        x2 = grid_line.get('X2', np.nan)
+        y2 = grid_line.get('Y2', np.nan)
+        if pd.notna(x1) and pd.notna(y1) and pd.notna(x2) and pd.notna(y2):
+            dx = float(x2) - float(x1)
+            dy = float(y2) - float(y1)
+            seg_len_sq = dx * dx + dy * dy
+            if seg_len_sq <= tol ** 2:
+                return np.hypot(float(x) - float(x1), float(y) - float(y1)) <= tol
+
+            px = float(x) - float(x1)
+            py = float(y) - float(y1)
+            cross = abs(px * dy - py * dx)
+            if cross / np.sqrt(seg_len_sq) > tol:
+                return False
+
+            dot = px * dx + py * dy
+            if dot < -tol or dot > seg_len_sq + tol:
+                return False
+            return True
+
+        return False
+
+    def _resolve_beam_grid(self, point_i_xy, point_j_xy, tol=1e-6):
+        for _, grid_line in self.grid_lines.iterrows():
+            if self._point_on_grid_line(point_i_xy, grid_line, tol=tol) and \
+               self._point_on_grid_line(point_j_xy, grid_line, tol=tol):
+                return str(grid_line['GridLineID']).strip()
+        return ''
+
+    def get_beams_connectivity(self, beam_names=None, tol=1e-6):
+        """
+        Retorna conectividad de vigas y su pertenencia a grid como ``DataFrame``.
+
+        Una viga pertenece a un grid solo si ambos puntos extremos caen sobre la misma línea.
+        """
+        beams = self.frames_properties.copy()
+        beams = beams[beams['Label'].astype(str).str.startswith('B')].reset_index(drop=True)
+
+        if beam_names is not None:
+            beam_names = format_list_args(beam_names, check_values=False)
+            beams = beams[beams['Frame'].isin(beam_names)].reset_index(drop=True)
+
+        if beams.empty:
+            return pd.DataFrame(columns=[
+                'Beam', 'Label', 'Story', 'Section', 'point_i', 'point_j', 'Grid'
+            ])
+
+        points_i = self.points_coordinates.rename(columns={
+            'Point': 'point_i',
+            'X': 'Xi',
+            'Y': 'Yi',
+            'Z': 'Zi',
+        })
+        beams = beams.merge(points_i, on='point_i', how='left')
+
+        points_j = self.points_coordinates.rename(columns={
+            'Point': 'point_j',
+            'X': 'Xj',
+            'Y': 'Yj',
+            'Z': 'Zj',
+        })
+        beams = beams.merge(points_j, on='point_j', how='left')
+
+        beams['Grid'] = beams.apply(
+            lambda row: self._resolve_beam_grid(
+                (row['Xi'], row['Yi']),
+                (row['Xj'], row['Yj']),
+                tol=tol,
+            ),
+            axis=1,
+        )
+
+        beams = beams.rename(columns={'Frame': 'Beam'})
+        return beams[['Beam', 'Label', 'Story', 'Section', 'point_i', 'point_j', 'Grid']].reset_index(drop=True)
+
+    @property
+    def beams_connectivity(self):
+        if self._beams_connectivity is None:
+            self._beams_connectivity = self.get_beams_connectivity()
+        return self._beams_connectivity
     
     def get_beam_forces(self,beams_label=None,cases_and_combos=None):
         beams_label = format_list_args(beams_label,self.label_beams)

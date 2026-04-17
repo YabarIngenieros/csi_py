@@ -188,6 +188,21 @@ Lee la tabla `Element Forces - Beams`.
 
 Es tabular y depende de nombres de label y casos activos.
 
+### `get_beams_connectivity(beam_names=None, tol=1e-6)`
+
+Resuelve la conectividad de vigas contra grids.
+
+Aunque devuelve un `DataFrame` conveniente, sigue muy cerca de la semantica CSI porque depende de:
+
+- labels de vigas derivados de `FrameObj.GetLabelNameList`
+- puntos extremos del frame
+- coordenadas nodales
+- definicion de grids desde tablas CSI
+
+### `beams_connectivity`
+
+Version cacheada de `get_beams_connectivity()`.
+
 ### `add_frame_distributed_load(frame_name, load_pattern, direction, value, dist_type=1)`
 
 Aplica carga distribuida conservando la semantica CSI de `direction` y `dist_type`.

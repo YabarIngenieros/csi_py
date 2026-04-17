@@ -870,6 +870,17 @@ class DataExtractor(Handler):
             return current_value
         return f"{current_value}|{grid_id}"
 
+    def _split_grid_ids(self, value):
+        if value in (None, ''):
+            return []
+        return [item.strip() for item in str(value).split('|') if item.strip()]
+
+    def _grid_value_matches(self, value, targets):
+        if not targets:
+            return False
+        values = set(self._split_grid_ids(value))
+        return bool(values.intersection(targets))
+
     def _resolve_column_grids(self, point_i_xy, point_j_xy, tol=1e-6):
         grid_x = ''
         grid_y = ''
@@ -1007,6 +1018,71 @@ class DataExtractor(Handler):
         if self._frames_connectivity is None:
             self._frames_connectivity = self.get_frames_connectivity()
         return self._frames_connectivity
+
+    def filter_frames_by_grid(self, grid=None, grid_x=None, grid_y=None,
+                              story=None, frame_type=None, labels=None, tol=1e-6):
+        """
+        Filtra frames por eje, intersección de ejes y/o piso.
+
+        - ``grid`` busca frames asociados a un solo eje.
+        - ``grid_x`` + ``grid_y`` busca intersección de dos ejes.
+        - ``story`` filtra por piso.
+        """
+        frames = self.get_frames_connectivity(frame_type=frame_type, labels=labels, tol=tol).copy()
+        if frames.empty:
+            return frames
+
+        grid_targets = set(format_list_args(grid, check_values=False) or [])
+        grid_x_targets = set(format_list_args(grid_x, check_values=False) or [])
+        grid_y_targets = set(format_list_args(grid_y, check_values=False) or [])
+        story_targets = set(format_list_args(story, check_values=False) or [])
+
+        if story_targets:
+            frames = frames[frames['Story'].isin(story_targets)]
+
+        if grid_targets:
+            mask_grid = frames.apply(
+                lambda row: (
+                    self._grid_value_matches(row.get('Grid', ''), grid_targets)
+                    or self._grid_value_matches(row.get('GridX', ''), grid_targets)
+                    or self._grid_value_matches(row.get('GridY', ''), grid_targets)
+                    or self._grid_value_matches(row.get('General', ''), grid_targets)
+                ),
+                axis=1,
+            )
+            frames = frames[mask_grid]
+
+        if grid_x_targets:
+            mask_grid_x = frames['GridX'].apply(lambda value: self._grid_value_matches(value, grid_x_targets))
+            frames = frames[mask_grid_x]
+
+        if grid_y_targets:
+            mask_grid_y = frames['GridY'].apply(lambda value: self._grid_value_matches(value, grid_y_targets))
+            frames = frames[mask_grid_y]
+
+        return frames.reset_index(drop=True)
+
+    def get_frames_on_grid(self, grid, story=None, frame_type=None, labels=None, tol=1e-6):
+        """Alias expresivo para filtrar frames en un solo eje."""
+        return self.filter_frames_by_grid(
+            grid=grid,
+            story=story,
+            frame_type=frame_type,
+            labels=labels,
+            tol=tol,
+        )
+
+    def get_frames_at_intersection(self, grid_x, grid_y, story=None,
+                                   frame_type=None, labels=None, tol=1e-6):
+        """Alias expresivo para filtrar frames en la intersección de dos ejes."""
+        return self.filter_frames_by_grid(
+            grid_x=grid_x,
+            grid_y=grid_y,
+            story=story,
+            frame_type=frame_type,
+            labels=labels,
+            tol=tol,
+        )
 
     def get_frame_connectivity(self, frame_type=None, labels=None, tol=1e-6):
         """Alias de :meth:`get_frames_connectivity`."""

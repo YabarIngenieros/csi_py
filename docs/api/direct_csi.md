@@ -202,6 +202,22 @@ Aliases:
 - `get_frame_connectivity(...)`
 - `frame_connectivity`
 
+### `filter_frames_by_grid(grid=None, grid_x=None, grid_y=None, story=None, frame_type=None, labels=None, tol=1e-6)`
+
+Filtra frames por eje, intersección de ejes y piso.
+
+Es un helper de consulta construido sobre la conectividad ya resuelta, pero sigue cerca de la semantica CSI porque depende de:
+
+- labels
+- story
+- grids tabulares
+- conectividad de vigas y columnas
+
+Aliases expresivos:
+
+- `get_frames_on_grid(...)`
+- `get_frames_at_intersection(...)`
+
 ### `get_beam_forces(beams_label=None, cases_and_combos=None)`
 
 Lee la tabla `Element Forces - Beams`.

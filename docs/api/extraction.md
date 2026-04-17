@@ -355,6 +355,35 @@ Aliases compatibles:
 - `get_frame_connectivity(...)`
 - `frame_connectivity`
 
+### `filter_frames_by_grid(grid=None, grid_x=None, grid_y=None, story=None, frame_type=None, labels=None, tol=1e-6)`
+
+Filtra frames por eje, intersección de ejes y/o piso.
+
+```python
+on_axis = model.filter_frames_by_grid(grid="A")
+at_intersection = model.filter_frames_by_grid(grid_x="A", grid_y="1")
+story_beams = model.filter_frames_by_grid(grid="A", story="Story2", frame_type="beam")
+```
+
+Reglas:
+
+- `grid` filtra frames asociados a un eje simple
+- `grid_x` + `grid_y` filtran la intersección de dos ejes
+- `story` filtra por piso
+- `frame_type` acepta `beam`, `column` o `None`
+- `labels` permite filtrar además por labels del tipo indicado
+
+Notas:
+
+- el filtro opera sobre `get_frames_connectivity()`
+- para columnas, la intersección usa `GridX` y `GridY`
+- para vigas, el eje simple usa `Grid`
+
+Aliases expresivos:
+
+- `get_frames_on_grid(grid, story=None, frame_type=None, labels=None, tol=1e-6)`
+- `get_frames_at_intersection(grid_x, grid_y, story=None, frame_type=None, labels=None, tol=1e-6)`
+
 ### `get_beams_connectivity(beams_label=None, tol=1e-6)`
 
 Retorna conectividad de vigas y su pertenencia a grid como `DataFrame`.

@@ -182,13 +182,28 @@ Lee fuerzas internas de frames mediante resultados nativos.
 
 Es uno de los metodos mas cercanos a CSI en todo el paquete.
 
+### `get_frames_connectivity(frame_type=None, labels=None, tol=1e-6)`
+
+Construye una vista conjunta de conectividad de vigas y columnas.
+
+Es un helper integrador, pero sigue muy cerca de CSI porque se apoya en:
+
+- labels de frames
+- puntos extremos
+- coordenadas nodales
+- definicion tabular de grids
+
+### `frames_connectivity`
+
+Version cacheada de `get_frames_connectivity()`.
+
 ### `get_beam_forces(beams_label=None, cases_and_combos=None)`
 
 Lee la tabla `Element Forces - Beams`.
 
 Es tabular y depende de nombres de label y casos activos.
 
-### `get_beams_connectivity(beam_names=None, tol=1e-6)`
+### `get_beams_connectivity(beams_label=None, tol=1e-6)`
 
 Resuelve la conectividad de vigas contra grids.
 
@@ -199,9 +214,30 @@ Aunque devuelve un `DataFrame` conveniente, sigue muy cerca de la semantica CSI 
 - coordenadas nodales
 - definicion de grids desde tablas CSI
 
+El filtro principal se hace por `Label` de viga.
+
 ### `beams_connectivity`
 
 Version cacheada de `get_beams_connectivity()`.
+
+### `get_columns_connectivity(columns_label=None, tol=1e-6)`
+
+Resuelve la conectividad de columnas contra grids y separa la salida en:
+
+- `GridX`
+- `GridY`
+- `General`
+
+Sigue muy cerca de la semantica CSI porque depende de:
+
+- labels de columnas derivados de `FrameObj.GetLabelNameList`
+- puntos extremos del frame
+- coordenadas nodales
+- definicion tabular de grids
+
+### `columns_connectivity`
+
+Version cacheada de `get_columns_connectivity()`.
 
 ### `add_frame_distributed_load(frame_name, load_pattern, direction, value, dist_type=1)`
 

@@ -54,7 +54,9 @@ class DataExtractor(Handler):
         self._frame_label_names = None
         self._frames_properties = None
         self._frames_forces = None
+        self._frames_connectivity = None
         self._beams_connectivity = None
+        self._columns_connectivity = None
         
         self._wall_sections_data = None
         self._slab_sections_data = None
@@ -857,7 +859,45 @@ class DataExtractor(Handler):
                 return str(grid_line['GridLineID']).strip()
         return ''
 
-    def get_beams_connectivity(self, beam_names=None, tol=1e-6):
+    def _append_grid_id(self, current_value, grid_id):
+        grid_id = str(grid_id).strip()
+        if not grid_id:
+            return current_value
+        if not current_value:
+            return grid_id
+        existing = [item for item in current_value.split('|') if item]
+        if grid_id in existing:
+            return current_value
+        return f"{current_value}|{grid_id}"
+
+    def _resolve_column_grids(self, point_i_xy, point_j_xy, tol=1e-6):
+        grid_x = ''
+        grid_y = ''
+        general = ''
+
+        for _, grid_line in self.grid_lines.iterrows():
+            if not (
+                self._point_on_grid_line(point_i_xy, grid_line, tol=tol)
+                and self._point_on_grid_line(point_j_xy, grid_line, tol=tol)
+            ):
+                continue
+
+            grid_id = grid_line.get('GridLineID', '')
+            axis = str(grid_line.get('Axis', '')).strip().upper()
+            if axis == 'X':
+                grid_x = self._append_grid_id(grid_x, grid_id)
+            elif axis == 'Y':
+                grid_y = self._append_grid_id(grid_y, grid_id)
+            else:
+                general = self._append_grid_id(general, grid_id)
+
+        return {
+            'GridX': grid_x,
+            'GridY': grid_y,
+            'General': general,
+        }
+
+    def get_beams_connectivity(self, beams_label=None, tol=1e-6):
         """
         Retorna conectividad de vigas y su pertenencia a grid como ``DataFrame``.
 
@@ -866,9 +906,9 @@ class DataExtractor(Handler):
         beams = self.frames_properties.copy()
         beams = beams[beams['Label'].astype(str).str.startswith('B')].reset_index(drop=True)
 
-        if beam_names is not None:
-            beam_names = format_list_args(beam_names, check_values=False)
-            beams = beams[beams['Frame'].isin(beam_names)].reset_index(drop=True)
+        if beams_label is not None:
+            beams_label = format_list_args(beams_label, check_values=False)
+            beams = beams[beams['Label'].isin(beams_label)].reset_index(drop=True)
 
         if beams.empty:
             return pd.DataFrame(columns=[
@@ -908,6 +948,113 @@ class DataExtractor(Handler):
         if self._beams_connectivity is None:
             self._beams_connectivity = self.get_beams_connectivity()
         return self._beams_connectivity
+
+    def get_frames_connectivity(self, frame_type=None, labels=None, tol=1e-6):
+        """
+        Retorna una vista conjunta de conectividad para vigas y columnas.
+
+        ``frame_type`` acepta ``beam``, ``column`` o ``None``.
+        ``labels`` filtra por labels del tipo solicitado.
+        """
+        frames = []
+        frame_type_norm = None if frame_type is None else str(frame_type).strip().lower()
+        if frame_type_norm not in (None, '', 'beam', 'beams', 'column', 'columns'):
+            raise ValueError("frame_type debe ser None, 'beam' o 'column'.")
+
+        if frame_type_norm in (None, '', 'beam', 'beams'):
+            beams = self.get_beams_connectivity(beams_label=labels, tol=tol).copy()
+            if not beams.empty:
+                beams['FrameType'] = 'Beam'
+                beams['Frame'] = beams['Beam']
+                beams['GridX'] = ''
+                beams['GridY'] = ''
+                beams['General'] = beams['Grid']
+                frames.append(beams[[
+                    'Frame', 'FrameType', 'Label', 'Story', 'Section',
+                    'point_i', 'point_j', 'Grid', 'GridX', 'GridY', 'General'
+                ]])
+
+        if frame_type_norm in (None, '', 'column', 'columns'):
+            columns = self.get_columns_connectivity(columns_label=labels, tol=tol).copy()
+            if not columns.empty:
+                columns['FrameType'] = 'Column'
+                columns['Frame'] = columns['Column']
+                columns['Grid'] = ''
+                frames.append(columns[[
+                    'Frame', 'FrameType', 'Label', 'Story', 'Section',
+                    'point_i', 'point_j', 'Grid', 'GridX', 'GridY', 'General'
+                ]])
+
+        if not frames:
+            return pd.DataFrame(columns=[
+                'Frame', 'FrameType', 'Label', 'Story', 'Section',
+                'point_i', 'point_j', 'Grid', 'GridX', 'GridY', 'General'
+            ])
+
+        return pd.concat(frames, ignore_index=True)
+
+    @property
+    def frames_connectivity(self):
+        if self._frames_connectivity is None:
+            self._frames_connectivity = self.get_frames_connectivity()
+        return self._frames_connectivity
+
+    def get_columns_connectivity(self, columns_label=None, tol=1e-6):
+        """
+        Retorna conectividad de columnas y su pertenencia a grids como ``DataFrame``.
+
+        La salida separa la pertenencia en ``GridX``, ``GridY`` y ``General``.
+        """
+        columns = self.frames_properties.copy()
+        columns = columns[columns['Label'].astype(str).str.startswith('C')].reset_index(drop=True)
+
+        if columns_label is not None:
+            columns_label = format_list_args(columns_label, check_values=False)
+            columns = columns[columns['Label'].isin(columns_label)].reset_index(drop=True)
+
+        if columns.empty:
+            return pd.DataFrame(columns=[
+                'Column', 'Label', 'Story', 'Section', 'point_i', 'point_j',
+                'GridX', 'GridY', 'General'
+            ])
+
+        points_i = self.points_coordinates.rename(columns={
+            'Point': 'point_i',
+            'X': 'Xi',
+            'Y': 'Yi',
+            'Z': 'Zi',
+        })
+        columns = columns.merge(points_i, on='point_i', how='left')
+
+        points_j = self.points_coordinates.rename(columns={
+            'Point': 'point_j',
+            'X': 'Xj',
+            'Y': 'Yj',
+            'Z': 'Zj',
+        })
+        columns = columns.merge(points_j, on='point_j', how='left')
+
+        grid_data = columns.apply(
+            lambda row: self._resolve_column_grids(
+                (row['Xi'], row['Yi']),
+                (row['Xj'], row['Yj']),
+                tol=tol,
+            ),
+            axis=1,
+        ).apply(pd.Series)
+        columns = pd.concat([columns, grid_data], axis=1)
+
+        columns = columns.rename(columns={'Frame': 'Column'})
+        return columns[[
+            'Column', 'Label', 'Story', 'Section', 'point_i', 'point_j',
+            'GridX', 'GridY', 'General'
+        ]].reset_index(drop=True)
+
+    @property
+    def columns_connectivity(self):
+        if self._columns_connectivity is None:
+            self._columns_connectivity = self.get_columns_connectivity()
+        return self._columns_connectivity
     
     def get_beam_forces(self,beams_label=None,cases_and_combos=None):
         beams_label = format_list_args(beams_label,self.label_beams)
@@ -1791,11 +1938,13 @@ class DataExtractor(Handler):
     # ==================== GEOMETRY EXTRACTION ====================
 
     def get_model_geometry(self, include_frames=True, include_areas=True,
-                          include_points=True, include_sections=True):
+                          include_points=True, include_sections=True,
+                          include_connectivity=False):
         """
         Extrae la geometría principal del modelo.
 
-        Puede incluir puntos, frames, áreas, secciones y límites globales.
+        Puede incluir puntos, frames, áreas, secciones, límites globales
+        y conectividad de frames.
         """
         geometry = {}
 
@@ -1844,6 +1993,16 @@ class DataExtractor(Handler):
                 ).drop('Point', axis=1)
 
                 geometry['frames'] = frames_df
+
+            if include_connectivity:
+                connectivity = self.get_frames_connectivity()
+                geometry['frames'] = geometry['frames'].merge(
+                    connectivity[[
+                        'Frame', 'FrameType', 'Grid', 'GridX', 'GridY', 'General'
+                    ]],
+                    on='Frame',
+                    how='left',
+                )
         else:
             geometry['frames'] = None
 

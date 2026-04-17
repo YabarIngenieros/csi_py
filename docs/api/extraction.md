@@ -225,8 +225,10 @@ Notas:
 - `frame_list`
 - `frame_label_names`
 - `frames_properties`
+- `frames_connectivity`
 - `frames_forces`
 - `beams_connectivity`
+- `columns_connectivity`
 - `label_beams`
 - `label_columns`
 
@@ -310,13 +312,51 @@ Extrae la tabla `Element Forces - Beams`, filtrando por etiqueta de viga.
 beam_forces = model.get_beam_forces(beams_label=["B1", "B2"])
 ```
 
-### `get_beams_connectivity(beam_names=None, tol=1e-6)`
+### `get_frames_connectivity(frame_type=None, labels=None, tol=1e-6)`
+
+Retorna una vista conjunta de conectividad para vigas y columnas.
+
+```python
+all_frames = model.get_frames_connectivity()
+beams = model.get_frames_connectivity(frame_type="beam", labels=["B1", "B2"])
+columns = model.get_frames_connectivity(frame_type="column", labels=["C1"])
+```
+
+Columnas:
+
+- `Frame`
+- `FrameType`
+- `Label`
+- `Story`
+- `Section`
+- `point_i`
+- `point_j`
+- `Grid`
+- `GridX`
+- `GridY`
+- `General`
+
+Notas:
+
+- `frame_type` acepta `beam`, `column` o `None`
+- para vigas, la pertenencia principal se reporta en `Grid`
+- para columnas, la pertenencia se separa en `GridX`, `GridY` y `General`
+
+### `frames_connectivity`
+
+Propiedad cacheada equivalente a `get_frames_connectivity()`.
+
+```python
+df = model.frames_connectivity
+```
+
+### `get_beams_connectivity(beams_label=None, tol=1e-6)`
 
 Retorna conectividad de vigas y su pertenencia a grid como `DataFrame`.
 
 ```python
 all_beams = model.get_beams_connectivity()
-subset = model.get_beams_connectivity(["45", "46"])
+subset = model.get_beams_connectivity(["B1", "B2"])
 ```
 
 Columnas:
@@ -333,6 +373,7 @@ Notas:
 
 - una viga pertenece a un grid solo si ambos puntos extremos caen sobre la misma línea
 - si no existe un grid común, `Grid` se devuelve como cadena vacía
+- `beams_label` filtra por label de viga, no por nombre interno del frame
 - la pertenencia usa `grid_lines` y soporta líneas cartesianas y líneas generales cuando la tabla trae geometría
 
 ### `beams_connectivity`
@@ -341,6 +382,42 @@ Propiedad cacheada equivalente a `get_beams_connectivity()`.
 
 ```python
 df = model.beams_connectivity
+```
+
+### `get_columns_connectivity(columns_label=None, tol=1e-6)`
+
+Retorna conectividad de columnas y su pertenencia a grids como `DataFrame`.
+
+```python
+all_columns = model.get_columns_connectivity()
+subset = model.get_columns_connectivity(["C1", "C2"])
+```
+
+Columnas:
+
+- `Column`
+- `Label`
+- `Story`
+- `Section`
+- `point_i`
+- `point_j`
+- `GridX`
+- `GridY`
+- `General`
+
+Notas:
+
+- `columns_label` filtra por label de columna
+- `GridX` y `GridY` corresponden a líneas cartesianas
+- `General` agrupa líneas no cartesianas o generales
+- si una columna coincide con más de una línea de una misma categoría, los IDs se concatenan con `|`
+
+### `columns_connectivity`
+
+Propiedad cacheada equivalente a `get_columns_connectivity()`.
+
+```python
+df = model.columns_connectivity
 ```
 
 ## Areas, losas, muros y decks
@@ -607,7 +684,7 @@ shape = model.get_modal_shape(mode_number=1, direction="horizontal")
 
 ## Geometria global y exportes
 
-### `get_model_geometry(include_frames=True, include_areas=True, include_points=True, include_sections=True)`
+### `get_model_geometry(include_frames=True, include_areas=True, include_points=True, include_sections=True, include_connectivity=False)`
 
 Extrae la geometria principal del modelo en un diccionario.
 
@@ -615,7 +692,16 @@ Extrae la geometria principal del modelo en un diccionario.
 geom = model.get_model_geometry()
 points = geom["points"]
 frames = geom["frames"]
+
+geom_conn = model.get_model_geometry(include_connectivity=True)
+frames_conn = geom_conn["frames"]
 ```
+
+Notas:
+
+- si `include_connectivity=True`, `geom["frames"]` agrega columnas de conectividad:
+  `FrameType`, `Grid`, `GridX`, `GridY`, `General`
+- la conectividad se toma de `get_frames_connectivity()`
 
 ### `get_geometry_summary()`
 

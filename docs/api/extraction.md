@@ -378,6 +378,7 @@ Notas:
 - el filtro opera sobre `get_frames_connectivity()`
 - para columnas, la intersección usa `GridX` y `GridY`
 - para vigas, el eje simple usa `Grid`
+- en `get_frames_at_intersection(...)` el orden de los dos ejes es intercambiable
 
 Aliases expresivos:
 

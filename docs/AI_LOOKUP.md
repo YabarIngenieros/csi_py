@@ -113,6 +113,7 @@ Sinonimos utiles:
 - filtrar frames por eje, interseccion y piso: `filter_frames_by_grid(grid=None, grid_x=None, grid_y=None, story=None, frame_type=None, labels=None, tol=1e-6)`
 - alias por eje simple: `get_frames_on_grid(grid, story=None, frame_type=None, labels=None, tol=1e-6)`
 - alias por interseccion: `get_frames_at_intersection(grid_x, grid_y, story=None, frame_type=None, labels=None, tol=1e-6)`
+- en interseccion, el orden de los dos ejes es intercambiable
 - conectividad de vigas: `get_beams_connectivity(beams_label=None, tol=1e-6)`
 - propiedad cacheada: `beams_connectivity`
 - aliases: `get_beam_connectivity(...)`, `beam_connectivity`

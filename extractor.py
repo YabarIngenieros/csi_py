@@ -696,7 +696,47 @@ class DataExtractor(Handler):
             self._frame_sections_data = \
                 self.get_frame_section_dimensions(get_properties=True)
         return self._frame_sections_data
-    
+
+    def get_section_by_label(self, label):
+        """
+        Retorna el tipo y datos completos de la sección asignada a los frames
+        con el label dado.
+
+        Combina dimensiones geométricas y propiedades calculadas (inercia,
+        área, módulos resistentes, etc.) de ``frame_sections_data``.
+
+        Parameters
+        ----------
+        label : str or list of str
+            Label o lista de labels de frame (columna ``Label`` de
+            ``frames_properties``).
+
+        Returns
+        -------
+        pd.DataFrame
+            Filas de ``frame_sections_data`` correspondientes a las secciones
+            usadas por los frames indicados, con una columna ``Label`` agregada
+            al inicio para referencia.
+        """
+        labels = format_list_args(label, check_values=False)
+        fp = self.frames_properties
+        mask = fp['Label'].isin(labels)
+        if not mask.any():
+            return pd.DataFrame()
+
+        section_names = fp.loc[mask, 'Section'].unique().tolist()
+        result = self.frame_sections_data[
+            self.frame_sections_data['SectionName'].isin(section_names)
+        ].copy()
+
+        label_map = (
+            fp.loc[mask, ['Label', 'Section']]
+            .drop_duplicates()
+            .rename(columns={'Section': 'SectionName'})
+        )
+        result = label_map.merge(result, on='SectionName', how='left')
+        return result.reset_index(drop=True)
+
     @property
     def frame_list(self):
         """Obtiene lista de todos los frames"""

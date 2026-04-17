@@ -52,6 +52,15 @@ Instalacion directa de dependencias:
 pip install pythonnet comtypes pandas numpy psutil
 ```
 
+Publicacion en PyPI:
+
+```bash
+python -m pip install --upgrade build twine
+python -m build
+python -m twine check dist/*
+python -m twine upload dist/*
+```
+
 ## Inicio rapido
 
 Conectar a una instancia abierta de ETABS:

@@ -16,7 +16,7 @@ __pycache__/
 *.K_*
 *.OUT
 *.Y
-*.Y*
+*.Y~
 *.ebk
 
 # Distribution / packaging

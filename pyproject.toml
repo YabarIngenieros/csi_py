@@ -3,7 +3,7 @@ requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "csi_py"
+name = "csi_py_handler"
 version = "0.1.0"
 description = "Biblioteca Python para automatizar software CSI (ETABS, SAP2000 y SAFE) con .NET y COM."
 readme = { file = "README.md", content-type = "text/markdown" }

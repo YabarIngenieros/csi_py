@@ -40,7 +40,7 @@ jobs:
 
     environment:
       name: pypi
-      url: https://pypi.org/project/csi_py/
+      url: https://pypi.org/project/csi-py-handler/
 
     steps:
       - name: Download distribution artifacts

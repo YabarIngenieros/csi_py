@@ -1,7 +1,9 @@
-from . import config
+#definicion del sistema de unidades, puede ser: 'SI'(Internacional),'MKS'(m-kg-s),'FPS'(ft-lb-s)
+units_system = 'SI'
+
 
 class Units:
-    
+
     m : float
     cm : float
     mm : float
@@ -16,24 +18,24 @@ class Units:
     MPa : float
     s : float
     csi_units : str
-    
+
     def __init__(self,system=None):
         self.system = None
-        
+
         if system is None:
-            system = config.units_system
+            system = units_system
         elif system not in ('SI','MKS','FPS'):
             return NotImplementedError(f'Sistema {system} no implementado')
-        
+
         self.set_units(system)
-        
+
     def get_system(self):
         return self.system
-    
+
     def set_units(self,u_system='SI'):
         '''
         Establece los factores de conversion de acuerdo al sistema de unidades definido
-        
+
         Parameters:
         u_system: str, default='SI'
             Sistema de unidades puede ser: 'SI'(Internacional),'MKS'(m-kg-s),'FPS'(ft-lb-s)
@@ -42,7 +44,7 @@ class Units:
             self.system = u_system
         else:
             return
-        
+
         if u_system == 'SI':
             self.m = 1.
             self.kg = 1.
@@ -58,7 +60,7 @@ class Units:
             self.kg = 1/2.20462
             self.s = 1.
             self.csi_units = 'lb_ft_F'
-         
+
         self.lb = 2.20462*self.kg
         self.g = self.kg/1000
         self.cm = self.m/100

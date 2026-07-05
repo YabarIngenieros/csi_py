@@ -19,6 +19,14 @@ La documentacion del proyecto ahora sigue un enfoque spec driven:
 - el [indice principal](docs/index.md) organiza la documentacion para consulta y publicacion
 - el [indice de API](docs/api/index.md) agrupa la referencia por responsabilidades
 
+## Historial de cambios
+
+### 1.0.1
+
+- `Handler.__init__`: `units` ya no se evalua en tiempo de importacion (evita `AttributeError` por orden de inicializacion); ahora usa `units=None` con resolucion perezosa a `eUnits.kN_m_C`.
+- `DataExtractor.modal_cases`: ahora usa unicamente `LoadCases.GetTypeOAPI_1(case)[0] == 3`, sin depender de que el analisis este corrido.
+- `api_helpers._wrap_set_table_for_editing_array`: agrega rama `dotnet` que convierte campos y datos a `System.Array[System.String]` (antes fallaba con `TypeError: No method matches given arguments`) y formatea numeros con `.10g` para evitar warnings de ETABS por precision de punto flotante.
+
 ## Estado del proyecto
 
 El paquete esta en una etapa temprana pero ya tiene una superficie de API amplia. La capa principal esta organizada asi:

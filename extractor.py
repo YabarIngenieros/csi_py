@@ -1946,8 +1946,10 @@ class DataExtractor(Handler):
     @property
     def modal_cases(self):
         if self._modal_cases is None:
-            df = self.modal_data
-            self._modal_cases = list(df['LoadCase'].unique())
+            self._modal_cases = [
+                case for case in self.cases
+                if self.model.LoadCases.GetTypeOAPI_1(case)[0] == 3
+            ]
         return self._modal_cases
 
     def get_modal_periods(self, case_name=None, num_modes=None, as_dict=False):

@@ -296,6 +296,20 @@ class CSIAPIHelpers:
         return func(fill_import_log)
 
     def _wrap_set_table_for_editing_array(self, func, table_key, table_version, fields, number_records, table_data, *args, **kwargs):
+        if self.backend == "dotnet":
+            import System
+
+            def _to_str(v):
+                try:
+                    f = float(v)
+                    return f"{f:.10g}"
+                except (TypeError, ValueError):
+                    return str(v)
+
+            net_fields = System.Array[System.String]([str(f) for f in fields])
+            net_data = System.Array[System.String]([_to_str(v) for v in table_data])
+            result = func(table_key, int(table_version), net_fields, int(number_records), net_data)
+            return self.normalize_api_result(result)
         return func(table_key, table_version, fields, number_records, table_data)
 
     def _wrap_add_cartesian(self, func, x, y, z, *args, **kwargs):

@@ -6,7 +6,7 @@ Una biblioteca Python para automatizar y controlar software de análisis
 estructural CSI (ETABS, SAP2000, SAFE) mediante API .NET o COM.
 """
 
-__version__ = "0.1.0"
+__version__ = "1.0.1"
 __author__ = "YabarIngenieros"
 __license__ = "MIT"
 
